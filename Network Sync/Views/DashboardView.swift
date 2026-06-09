@@ -1,68 +1,134 @@
-//
-//  DashboardView.swift
-//  Newtowk Sync
-//
-//  Created by Anthony Terry on 6/8/26.
-//
-
+import SwiftUI
 
 struct DashboardView: View {
-    @Binding var isRunning: Bool
-    @Binding var status: String
-    @Binding var progress: Double
-    
+    @EnvironmentObject var appState: AppState
+    @StateObject private var pipeline = PipelineEngine.shared
+
     var body: some View {
-        VStack(spacing: 20) {
-            HStack {
-                Text("ISO Sync & Transcode Pipeline")
-                    .font(.title)
-                    .fontWeight(.bold)
-                Spacer()
-                Circle()
-                    .fill(isRunning ? Color.green : Color.gray)
-                    .frame(width: 12, height: 12)
-                Text(isRunning ? "Pipeline Running" : "Ready")
-            }
-            .padding()
-            
+        VStack(spacing: 0) {
+            headerBar
             Divider()
-            
-            // Progress Indicator
-            VStack(alignment: .leading) {
-                Text("Current Phase: \(status)")
-                    .font(.headline)
-                ProgressView(value: progress, total: 1.0)
-                    .progressViewStyle(.linear)
+
+            if appState.hyperDecks.isEmpty {
+                emptyState
+            } else {
+                HSplitView {
+                    deckGrid
+                    if appState.isRunning || !appState.activeTasks.isEmpty {
+                        taskPanel
+                            .frame(minWidth: 280, maxWidth: 360)
+                    }
+                }
             }
-            .padding()
-            
+
+            Divider()
+            actionBar
+        }
+    }
+
+    // MARK: - Header
+    private var headerBar: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Sync Dashboard")
+                    .font(.title2).bold()
+                Text("\(appState.hyperDecks.count) decks · \(appState.syncLocation.volumeName)")
+                    .font(.subheadline).foregroundStyle(.secondary)
+            }
             Spacer()
-            
-            // Main Action Trigger
-            Button(action: {
-                startPipeline()
-            }) {
-                Text(isRunning ? "Stop Pipeline" : "Start Interleaved Pipeline")
-                    .font(.title3)
-                    .padding(.horizontal, 40)
-                    .padding(.vertical, 10)
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(appState.isRunning ? Color.green : Color.gray.opacity(0.4))
+                    .frame(width: 9, height: 9)
+                Text(appState.isRunning ? "Running" : "Idle")
+                    .font(.subheadline).foregroundStyle(.secondary)
             }
-            .buttonStyle(.borderedProminent)
-            .tint(isRunning ? .red : .blue)
-            .padding()
         }
         .padding()
     }
-    
-    func startPipeline() {
-        isRunning.toggle()
-        if isRunning {
-            status = "Mounting Cloud Store..."
-            progress = 0.1
-            // Call underlying Swift translation of your pipeline here
-        } else {
-            status = "Idle"
-            progress = 0.0
+
+    // MARK: - Deck Grid
+    private var deckGrid: some View {
+        ScrollView {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 270))], spacing: 16) {
+                ForEach(appState.hyperDecks) { deck in
+                    DeckCardView(deck: deck)
+                }
+            }
+            .padding()
         }
+    }
+
+    // MARK: - Right-side task panel
+    private var taskPanel: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Active Tasks")
+                .font(.headline)
+                .padding()
+            Divider()
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    ForEach(appState.activeTasks) { task in
+                        TaskRow(task: task)
+                        Divider()
+                    }
+                }
+            }
+            Divider()
+            // Log tail
+            ScrollView {
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(appState.pipelineLog.suffix(30), id: \.self) { line in
+                        Text(line)
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+                .padding(8)
+            }
+            .frame(height: 120)
+            .background(Color(NSColor.textBackgroundColor))
+        }
+    }
+
+    // MARK: - Empty state
+    private var emptyState: some View {
+        VStack(spacing: 14) {
+            Spacer()
+            Image(systemName: "server.rack")
+                .font(.system(size: 48)).foregroundStyle(.secondary)
+            Text("No HyperDecks Configured").font(.title3).bold()
+            Text("Add your devices in the HyperDecks tab.")
+                .foregroundStyle(.secondary)
+            Spacer()
+        }
+    }
+
+    // MARK: - Action bar
+    private var actionBar: some View {
+        HStack {
+            Spacer()
+            if appState.isRunning {
+                Button(role: .destructive) {
+                    pipeline.stop()
+                } label: {
+                    Label("Stop Pipeline", systemImage: "stop.fill")
+                        .padding(.horizontal, 32).padding(.vertical, 8)
+                }
+                .buttonStyle(.borderedProminent).tint(.red)
+            } else {
+                Button {
+                    Task { await pipeline.runAll() }
+                } label: {
+                    Label("Start Sync & Transcode", systemImage: "play.fill")
+                        .padding(.horizontal, 32).padding(.vertical, 8)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(appState.hyperDecks.isEmpty)
+            }
+            Spacer()
+        }
+        .padding()
     }
 }

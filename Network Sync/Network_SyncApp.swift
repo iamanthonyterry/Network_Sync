@@ -1,21 +1,16 @@
-//
-//  Newtowk_SyncApp.swift
-//  Newtowk Sync
-//
-//  Created by Anthony Terry on 6/7/26.
-//
-
 import SwiftUI
-import CoreData
 
 @main
-struct Newtowk_SyncApp: App {
-    let persistenceController = PersistenceController.shared
+struct Network_SyncApp: App {
+    @StateObject private var appState = AppState.shared
 
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .environment(\.managedObjectContext, persistenceController.container.viewContext)
+                .environmentObject(appState)
         }
+        .windowStyle(.titleBar)
+        .windowToolbarStyle(.unified)
+        .defaultSize(width: 1100, height: 700)
     }
 }

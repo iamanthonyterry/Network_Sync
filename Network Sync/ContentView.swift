@@ -1,31 +1,36 @@
 import SwiftUI
 
 struct ContentView: View {
-    // Persistent or AppStorage values replacing the hardcoded script constants
-    @AppStorage("cloudStoreIP") private var cloudStoreIP = "192.168.2.119"
-    @AppStorage("maxParallelConversions") private var maxParallelConversions = 2
-    
-    @State private var isRunning = false
-    @State private var currentStatus = "Idle"
-    @State private var totalProgress: Double = 0.0
+    @EnvironmentObject var appState: AppState
+    @State private var selection: NavItem? = .dashboard
+
+    enum NavItem: String, Hashable, CaseIterable {
+        case dashboard = "Dashboard"
+        case devices   = "HyperDecks"
+        case settings  = "Settings"
+
+        var icon: String {
+            switch self {
+            case .dashboard: return "play.tv"
+            case .devices:   return "server.rack"
+            case .settings:  return "gearshape"
+            }
+        }
+    }
 
     var body: some View {
         NavigationSplitView {
-            List {
-                NavigationLink(destination: DashboardView(isRunning: $isRunning, status: $currentStatus, progress: $totalProgress)) {
-                    Label("Dashboard", systemImage: "play.tv")
-                }
-                NavigationLink(destination: HyperDeckConfigView()) {
-                    Label("HyperDecks", systemImage: "server.rack")
-                }
-                NavigationLink(destination: SettingsView()) {
-                    Label("Settings & Email", systemImage: "gearshape")
-                }
+            List(NavItem.allCases, id: \.self, selection: $selection) { item in
+                Label(item.rawValue, systemImage: item.icon)
             }
-            .listStyle(SidebarListStyle())
+            .listStyle(.sidebar)
+            .navigationTitle("Network Sync")
         } detail: {
-            Text("Select an option from the sidebar")
+            switch selection {
+            case .dashboard, .none: DashboardView()
+            case .devices:          DevicesView()
+            case .settings:         SettingsView()
+            }
         }
-        .frame(minWidth: 800, minHeight: 500)
     }
 }
