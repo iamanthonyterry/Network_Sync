@@ -24,25 +24,49 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		648E39C02FD6334E00EE3177 /* Newtowk Sync.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Newtowk Sync.app"; sourceTree = BUILT_PRODUCTS_DIR; };
-		648E39D22FD6335100EE3177 /* Newtowk SyncTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Newtowk SyncTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
-		648E39DC2FD6335100EE3177 /* Newtowk SyncUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Newtowk SyncUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		648E39C02FD6334E00EE3177 /* Network Sync.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Network Sync.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		648E39D22FD6335100EE3177 /* Network SyncTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Network SyncTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		648E39DC2FD6335100EE3177 /* Network SyncUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Network SyncUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		6423BC7D2FD7360C00E45F5E /* Exceptions for "Network Sync" folder in "Network Sync" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Support/mountSMBVolume.swift,
+			);
+			target = 648E39BF2FD6334E00EE3177 /* Network Sync */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
+		6423BC7E2FD7360C00E45F5E /* Exceptions for "Network Sync" folder in "Copy Bundle Resources" phase from "Network Sync" target */ = {
+			isa = PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet;
+			buildPhase = 648E39BE2FD6334E00EE3177 /* Resources */;
+			membershipExceptions = (
+				Support/mountSMBVolume.swift,
+			);
+		};
+/* End PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		648E39C22FD6334E00EE3177 /* Newtowk Sync */ = {
+		648E39C22FD6334E00EE3177 /* Network Sync */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = "Newtowk Sync";
+			exceptions = (
+				6423BC7D2FD7360C00E45F5E /* Exceptions for "Network Sync" folder in "Network Sync" target */,
+				6423BC7E2FD7360C00E45F5E /* Exceptions for "Network Sync" folder in "Copy Bundle Resources" phase from "Network Sync" target */,
+			);
+			path = "Network Sync";
 			sourceTree = "<group>";
 		};
-		648E39D52FD6335100EE3177 /* Newtowk SyncTests */ = {
+		648E39D52FD6335100EE3177 /* Network SyncTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = "Newtowk SyncTests";
+			path = "Network SyncTests";
 			sourceTree = "<group>";
 		};
-		648E39DF2FD6335100EE3177 /* Newtowk SyncUITests */ = {
+		648E39DF2FD6335100EE3177 /* Network SyncUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = "Newtowk SyncUITests";
+			path = "Network SyncUITests";
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -75,9 +99,9 @@
 		648E39B72FD6334E00EE3177 = {
 			isa = PBXGroup;
 			children = (
-				648E39C22FD6334E00EE3177 /* Newtowk Sync */,
-				648E39D52FD6335100EE3177 /* Newtowk SyncTests */,
-				648E39DF2FD6335100EE3177 /* Newtowk SyncUITests */,
+				648E39C22FD6334E00EE3177 /* Network Sync */,
+				648E39D52FD6335100EE3177 /* Network SyncTests */,
+				648E39DF2FD6335100EE3177 /* Network SyncUITests */,
 				648E39C12FD6334E00EE3177 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -85,9 +109,9 @@
 		648E39C12FD6334E00EE3177 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				648E39C02FD6334E00EE3177 /* Newtowk Sync.app */,
-				648E39D22FD6335100EE3177 /* Newtowk SyncTests.xctest */,
-				648E39DC2FD6335100EE3177 /* Newtowk SyncUITests.xctest */,
+				648E39C02FD6334E00EE3177 /* Network Sync.app */,
+				648E39D22FD6335100EE3177 /* Network SyncTests.xctest */,
+				648E39DC2FD6335100EE3177 /* Network SyncUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -95,9 +119,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		648E39BF2FD6334E00EE3177 /* Newtowk Sync */ = {
+		648E39BF2FD6334E00EE3177 /* Network Sync */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 648E39E62FD6335100EE3177 /* Build configuration list for PBXNativeTarget "Newtowk Sync" */;
+			buildConfigurationList = 648E39E62FD6335100EE3177 /* Build configuration list for PBXNativeTarget "Network Sync" */;
 			buildPhases = (
 				648E39BC2FD6334E00EE3177 /* Sources */,
 				648E39BD2FD6334E00EE3177 /* Frameworks */,
@@ -108,18 +132,18 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				648E39C22FD6334E00EE3177 /* Newtowk Sync */,
+				648E39C22FD6334E00EE3177 /* Network Sync */,
 			);
-			name = "Newtowk Sync";
+			name = "Network Sync";
 			packageProductDependencies = (
 			);
 			productName = "Newtowk Sync";
-			productReference = 648E39C02FD6334E00EE3177 /* Newtowk Sync.app */;
+			productReference = 648E39C02FD6334E00EE3177 /* Network Sync.app */;
 			productType = "com.apple.product-type.application";
 		};
-		648E39D12FD6335100EE3177 /* Newtowk SyncTests */ = {
+		648E39D12FD6335100EE3177 /* Network SyncTests */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 648E39E92FD6335100EE3177 /* Build configuration list for PBXNativeTarget "Newtowk SyncTests" */;
+			buildConfigurationList = 648E39E92FD6335100EE3177 /* Build configuration list for PBXNativeTarget "Network SyncTests" */;
 			buildPhases = (
 				648E39CE2FD6335100EE3177 /* Sources */,
 				648E39CF2FD6335100EE3177 /* Frameworks */,
@@ -131,18 +155,18 @@
 				648E39D42FD6335100EE3177 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
-				648E39D52FD6335100EE3177 /* Newtowk SyncTests */,
+				648E39D52FD6335100EE3177 /* Network SyncTests */,
 			);
-			name = "Newtowk SyncTests";
+			name = "Network SyncTests";
 			packageProductDependencies = (
 			);
 			productName = "Newtowk SyncTests";
-			productReference = 648E39D22FD6335100EE3177 /* Newtowk SyncTests.xctest */;
+			productReference = 648E39D22FD6335100EE3177 /* Network SyncTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
-		648E39DB2FD6335100EE3177 /* Newtowk SyncUITests */ = {
+		648E39DB2FD6335100EE3177 /* Network SyncUITests */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 648E39EC2FD6335100EE3177 /* Build configuration list for PBXNativeTarget "Newtowk SyncUITests" */;
+			buildConfigurationList = 648E39EC2FD6335100EE3177 /* Build configuration list for PBXNativeTarget "Network SyncUITests" */;
 			buildPhases = (
 				648E39D82FD6335100EE3177 /* Sources */,
 				648E39D92FD6335100EE3177 /* Frameworks */,
@@ -154,13 +178,13 @@
 				648E39DE2FD6335100EE3177 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
-				648E39DF2FD6335100EE3177 /* Newtowk SyncUITests */,
+				648E39DF2FD6335100EE3177 /* Network SyncUITests */,
 			);
-			name = "Newtowk SyncUITests";
+			name = "Network SyncUITests";
 			packageProductDependencies = (
 			);
 			productName = "Newtowk SyncUITests";
-			productReference = 648E39DC2FD6335100EE3177 /* Newtowk SyncUITests.xctest */;
+			productReference = 648E39DC2FD6335100EE3177 /* Network SyncUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
 /* End PBXNativeTarget section */
@@ -186,7 +210,7 @@
 					};
 				};
 			};
-			buildConfigurationList = 648E39BB2FD6334E00EE3177 /* Build configuration list for PBXProject "Newtowk Sync" */;
+			buildConfigurationList = 648E39BB2FD6334E00EE3177 /* Build configuration list for PBXProject "Network Sync" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -200,9 +224,9 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				648E39BF2FD6334E00EE3177 /* Newtowk Sync */,
-				648E39D12FD6335100EE3177 /* Newtowk SyncTests */,
-				648E39DB2FD6335100EE3177 /* Newtowk SyncUITests */,
+				648E39BF2FD6334E00EE3177 /* Network Sync */,
+				648E39D12FD6335100EE3177 /* Network SyncTests */,
+				648E39DB2FD6335100EE3177 /* Network SyncUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -258,12 +282,12 @@
 /* Begin PBXTargetDependency section */
 		648E39D42FD6335100EE3177 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = 648E39BF2FD6334E00EE3177 /* Newtowk Sync */;
+			target = 648E39BF2FD6334E00EE3177 /* Network Sync */;
 			targetProxy = 648E39D32FD6335100EE3177 /* PBXContainerItemProxy */;
 		};
 		648E39DE2FD6335100EE3177 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = 648E39BF2FD6334E00EE3177 /* Newtowk Sync */;
+			target = 648E39BF2FD6334E00EE3177 /* Network Sync */;
 			targetProxy = 648E39DD2FD6335100EE3177 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
@@ -400,9 +424,20 @@
 				DEVELOPMENT_TEAM = GAYT638PXY;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_INCOMING_NETWORK_CONNECTIONS = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				ENABLE_PREVIEWS = YES;
-				ENABLE_USER_SELECTED_FILES = readonly;
+				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
+				ENABLE_RESOURCE_ACCESS_BLUETOOTH = NO;
+				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
+				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
+				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
+				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
+				ENABLE_RESOURCE_ACCESS_PRINTING = NO;
+				ENABLE_RESOURCE_ACCESS_USB = NO;
+				ENABLE_USER_SELECTED_FILES = readwrite;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Newtowk-Sync-Info.plist";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -432,9 +467,20 @@
 				DEVELOPMENT_TEAM = GAYT638PXY;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_INCOMING_NETWORK_CONNECTIONS = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				ENABLE_PREVIEWS = YES;
-				ENABLE_USER_SELECTED_FILES = readonly;
+				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
+				ENABLE_RESOURCE_ACCESS_BLUETOOTH = NO;
+				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
+				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
+				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
+				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
+				ENABLE_RESOURCE_ACCESS_PRINTING = NO;
+				ENABLE_RESOURCE_ACCESS_USB = NO;
+				ENABLE_USER_SELECTED_FILES = readwrite;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Newtowk-Sync-Info.plist";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -470,7 +516,7 @@
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Newtowk Sync.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Newtowk Sync";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Network Sync.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Network Sync";
 			};
 			name = Debug;
 		};
@@ -491,7 +537,7 @@
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Newtowk Sync.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Newtowk Sync";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Network Sync.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Network Sync";
 			};
 			name = Release;
 		};
@@ -536,7 +582,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		648E39BB2FD6334E00EE3177 /* Build configuration list for PBXProject "Newtowk Sync" */ = {
+		648E39BB2FD6334E00EE3177 /* Build configuration list for PBXProject "Network Sync" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				648E39E42FD6335100EE3177 /* Debug */,
@@ -545,7 +591,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		648E39E62FD6335100EE3177 /* Build configuration list for PBXNativeTarget "Newtowk Sync" */ = {
+		648E39E62FD6335100EE3177 /* Build configuration list for PBXNativeTarget "Network Sync" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				648E39E72FD6335100EE3177 /* Debug */,
@@ -554,7 +600,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		648E39E92FD6335100EE3177 /* Build configuration list for PBXNativeTarget "Newtowk SyncTests" */ = {
+		648E39E92FD6335100EE3177 /* Build configuration list for PBXNativeTarget "Network SyncTests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				648E39EA2FD6335100EE3177 /* Debug */,
@@ -563,7 +609,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		648E39EC2FD6335100EE3177 /* Build configuration list for PBXNativeTarget "Newtowk SyncUITests" */ = {
+		648E39EC2FD6335100EE3177 /* Build configuration list for PBXNativeTarget "Network SyncUITests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				648E39ED2FD6335100EE3177 /* Debug */,

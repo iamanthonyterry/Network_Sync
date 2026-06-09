@@ -6,9 +6,9 @@
 //
 
 import Testing
-@testable import Newtowk_Sync
+@testable import Network_Sync
 
-struct Newtowk_SyncTests {
+struct Network_SyncTests {
 
     @Test func example() async throws {
         // Write your test here and use APIs like `#expect(...)` to check expected conditions.
