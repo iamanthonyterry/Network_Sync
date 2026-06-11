@@ -23,6 +23,9 @@ class PipelineEngine: ObservableObject {
         }
         appState.log("✅ Mounted at \(appState.syncLocation.mountPath)")
 
+        // Storage cleanup before new run
+        await runStorageCleanup()
+
         for deck in appState.hyperDecks {
             guard appState.isRunning else { break }
             await syncAndConvert(deck: deck)
@@ -49,32 +52,42 @@ class PipelineEngine: ObservableObject {
         finishRun()
     }
 
-    // MARK: - SMB Mount
-    private func mountSMBVolume(location: SyncLocation) async -> Bool {
-        if FileManager.default.fileExists(atPath: location.mountPath) { return true }
-        let script = "mount volume \"smb://\(location.ipAddress)/\(location.volumeName)\" as user name \"\(location.username)\" with password \"\(location.password)\""
-        return await withCheckedContinuation { continuation in
-            DispatchQueue.global().async {
-                let process = Process()
-                process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-                process.arguments = ["-e", script]
-                do {
-                    try process.run()
-                    process.waitUntilExit()
-                    Thread.sleep(forTimeInterval: 2)
-                    continuation.resume(returning: FileManager.default.fileExists(atPath: location.mountPath))
-                } catch {
-                    continuation.resume(returning: false)
-                }
-            }
-        }
-    }
-
     // MARK: - Stop
     func stop() {
         appState.isRunning = false
         appState.log("⏹ Pipeline stopped by user")
         appState.commitRun()
+    }
+
+    // MARK: - Storage cleanup (retention policy)
+    private func runStorageCleanup() async {
+        let days = appState.conversionSettings.retentionDays
+        let cutoff = Date().addingTimeInterval(-Double(days) * 86400)
+        let base = URL(fileURLWithPath: appState.syncLocation.recordsPath)
+        appState.log("🧹 Running \(days)-day retention cleanup...")
+
+        await Task.detached(priority: .background) {
+            let fm = FileManager.default
+            guard let enumerator = fm.enumerator(
+                at: base,
+                includingPropertiesForKeys: [.contentModificationDateKey],
+                options: [.skipsHiddenFiles]
+            ) else { return }
+
+            var deleted = 0
+            for case let url as URL in enumerator {
+                guard url.pathExtension.lowercased() == "mp4" ||
+                      url.lastPathComponent.hasSuffix(".done") else { continue }
+                if let mod = try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
+                   mod < cutoff {
+                    try? fm.removeItem(at: url)
+                    deleted += 1
+                }
+            }
+            await MainActor.run {
+                self.appState.log("  🗑 Cleanup removed \(deleted) old file(s)")
+            }
+        }.value
     }
 
     // MARK: - Core interleaved logic
@@ -95,62 +108,125 @@ class PipelineEngine: ObservableObject {
             .appendingPathComponent(deck.name)
         try? FileManager.default.createDirectory(at: deckDestDir, withIntermediateDirectories: true)
 
+        // Download all files for this deck sequentially
+        var filesToConvert: [URL] = []
+
         for fileName in remoteFiles {
             guard appState.isRunning else { return }
 
             let destURL    = deckDestDir.appendingPathComponent(fileName)
             let receiptURL = deckDestDir.appendingPathComponent(fileName + ".done")
+            let convertedURL = deckDestDir
+                .appendingPathComponent("Converted")
+                .appendingPathComponent((fileName as NSString).deletingPathExtension + ".mp4")
 
-            if FileManager.default.fileExists(atPath: destURL.path) ||
+            if FileManager.default.fileExists(atPath: convertedURL.path) ||
                FileManager.default.fileExists(atPath: receiptURL.path) {
                 appState.log("  ⏭ \(fileName) already processed")
                 appState.currentRunSkipped += 1
                 continue
             }
 
-            // Download
+            // Download (with 1 retry on failure)
             let task = addTask(fileName: fileName, deckName: deck.name)
             updateTask(id: task.id, phase: .downloading, syncProgress: 0)
             appState.log("  ⬇ Downloading \(fileName)...")
 
-            let downloaded = await FTPService.downloadFile(
+            var downloaded = await FTPService.downloadFile(
                 named: fileName, from: deck, to: destURL
-            ) { pct in self.updateTask(id: task.id, syncProgress: pct) }
+            ) { [weak self] pct in self?.updateTask(id: task.id, syncProgress: pct) }
+
+            if !downloaded {
+                appState.log("  ↩ Retrying \(fileName)...")
+                try? FileManager.default.removeItem(at: destURL)
+                downloaded = await FTPService.downloadFile(
+                    named: fileName, from: deck, to: destURL
+                ) { [weak self] pct in self?.updateTask(id: task.id, syncProgress: pct) }
+            }
 
             guard downloaded else {
-                updateTask(id: task.id, phase: .error, errorMessage: "Download failed")
+                updateTask(id: task.id, phase: .error, errorMessage: "Download failed after retry")
                 appState.log("  ❌ Download failed: \(fileName)")
                 appState.currentRunErrors += 1
                 continue
             }
+
             updateTask(id: task.id, phase: .converting, syncProgress: 1)
             appState.log("  ✅ Downloaded \(fileName)")
+            filesToConvert.append(destURL)
+        }
 
-            // Convert
+        // Convert with parallelism
+        guard !filesToConvert.isEmpty, appState.isRunning else { return }
+        await convertInParallel(files: filesToConvert, deckDestDir: deckDestDir)
+    }
+
+    // MARK: - Parallel conversion
+    private func convertInParallel(files: [URL], deckDestDir: URL) async {
+        let maxJobs = appState.conversionSettings.maxParallelConversions
+        let convertedDir = deckDestDir.appendingPathComponent("Converted")
+        try? FileManager.default.createDirectory(at: convertedDir, withIntermediateDirectories: true)
+
+        // Chunk into batches of maxJobs
+        let batches = stride(from: 0, to: files.count, by: maxJobs).map {
+            Array(files[$0 ..< min($0 + maxJobs, files.count)])
+        }
+
+        for batch in batches {
             guard appState.isRunning else { return }
-            let convertedDir = deckDestDir.appendingPathComponent("Converted")
-            let outputURL = convertedDir.appendingPathComponent(
-                (fileName as NSString).deletingPathExtension + ".mp4"
-            )
-            appState.log("  🎬 Converting \(fileName)...")
 
-            let converted = await ConversionService.convert(
-                input: destURL, output: outputURL,
-                settings: appState.conversionSettings
-            ) { pct in self.updateTask(id: task.id, convertProgress: pct) }
+            await withTaskGroup(of: Void.self) { group in
+                for inputURL in batch {
+                    group.addTask {
+                        let fileName  = inputURL.lastPathComponent
+                        let outputURL = convertedDir.appendingPathComponent(
+                            (fileName as NSString).deletingPathExtension + ".mp4"
+                        )
+                        let receiptURL = inputURL.deletingLastPathComponent()
+                            .appendingPathComponent(fileName + ".done")
 
-            if converted {
-                updateTask(id: task.id, phase: .done, convertProgress: 1)
-                appState.log("  ✅ Converted → \(outputURL.lastPathComponent)")
-                appState.currentRunConverted += 1
-                if appState.conversionSettings.deleteOriginalsAfterConvert {
-                    try? FileManager.default.removeItem(at: destURL)
-                    FileManager.default.createFile(atPath: receiptURL.path, contents: nil)
+                        // Find matching task
+                        let taskID = await MainActor.run {
+                            self.appState.activeTasks.first { $0.fileName == fileName }?.id
+                        }
+
+                        await MainActor.run {
+                            self.appState.log("  🎬 Converting \(fileName)...")
+                        }
+
+                        let ok = await ConversionService.convert(
+                            input: inputURL,
+                            output: outputURL,
+                            settings: self.appState.conversionSettings
+                        ) { pct in
+                            if let id = taskID {
+                                Task { @MainActor in
+                                    self.updateTask(id: id, convertProgress: pct)
+                                }
+                            }
+                        }
+
+                        await MainActor.run {
+                            if ok {
+                                if let id = taskID {
+                                    self.updateTask(id: id, phase: .done, convertProgress: 1)
+                                }
+                                self.appState.log("  ✅ Converted → \(outputURL.lastPathComponent)")
+                                self.appState.currentRunConverted += 1
+                                if self.appState.conversionSettings.deleteOriginalsAfterConvert {
+                                    try? FileManager.default.removeItem(at: inputURL)
+                                    FileManager.default.createFile(atPath: receiptURL.path, contents: nil)
+                                }
+                            } else {
+                                if let id = taskID {
+                                    self.updateTask(id: id, phase: .error, errorMessage: "Conversion failed")
+                                }
+                                self.appState.log("  ❌ Conversion failed: \(fileName)")
+                                self.appState.currentRunErrors += 1
+                            }
+                        }
+                    }
                 }
-            } else {
-                updateTask(id: task.id, phase: .error, errorMessage: "Conversion failed")
-                appState.log("  ❌ Conversion failed: \(fileName)")
-                appState.currentRunErrors += 1
             }
         }
     }
@@ -163,6 +239,27 @@ class PipelineEngine: ObservableObject {
         appState.log("✅ Done — \(c) converted, \(e) errors")
         appState.commitRun()
         NotificationService.sendCompletion(converted: c, errors: e)
+    }
+
+    // MARK: - SMB Mount
+    private func mountSMBVolume(location: SyncLocation) async -> Bool {
+        if FileManager.default.fileExists(atPath: location.mountPath) { return true }
+        let script = "mount volume \"smb://\(location.ipAddress)/\(location.volumeName)\" as user name \"\(location.username)\" with password \"\(location.password)\""
+        return await withCheckedContinuation { continuation in
+            DispatchQueue.global().async {
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+                process.arguments = ["-e", script]
+                do {
+                    try process.run()
+                    process.waitUntilExit()
+                    Thread.sleep(forTimeInterval: 2)
+                    continuation.resume(returning: FileManager.default.fileExists(atPath: location.mountPath))
+                } catch {
+                    continuation.resume(returning: false)
+                }
+            }
+        }
     }
 
     // MARK: - Task helpers

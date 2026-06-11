@@ -4,6 +4,10 @@ struct DashboardView: View {
     @EnvironmentObject var appState: AppState
     @StateObject private var pipeline = PipelineEngine.shared
 
+    var activeCount: Int  { appState.activeTasks.filter { $0.phase == .downloading || $0.phase == .converting }.count }
+    var doneCount: Int    { appState.activeTasks.filter { $0.phase == .done }.count }
+    var errorCount: Int   { appState.activeTasks.filter { $0.phase == .error }.count }
+
     var body: some View {
         VStack(spacing: 0) {
             headerBar
@@ -15,8 +19,7 @@ struct DashboardView: View {
                 HSplitView {
                     deckGrid
                     if appState.isRunning || !appState.activeTasks.isEmpty {
-                        taskPanel
-                            .frame(minWidth: 280, maxWidth: 360)
+                        taskPanel.frame(minWidth: 300, maxWidth: 380)
                     }
                 }
             }
@@ -30,18 +33,23 @@ struct DashboardView: View {
     private var headerBar: some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Sync Dashboard")
-                    .font(.title2).bold()
+                Text("Sync Dashboard").font(.title2).bold()
                 Text("\(appState.hyperDecks.count) decks · \(appState.syncLocation.volumeName)")
                     .font(.subheadline).foregroundStyle(.secondary)
             }
             Spacer()
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(appState.isRunning ? Color.green : Color.gray.opacity(0.4))
-                    .frame(width: 9, height: 9)
-                Text(appState.isRunning ? "Running" : "Idle")
-                    .font(.subheadline).foregroundStyle(.secondary)
+
+            if appState.isRunning {
+                HStack(spacing: 10) {
+                    statPill("\(activeCount) active", color: .blue)
+                    statPill("\(doneCount) done", color: .green)
+                    if errorCount > 0 { statPill("\(errorCount) errors", color: .red) }
+                }
+            } else {
+                HStack(spacing: 6) {
+                    Circle().fill(Color.gray.opacity(0.4)).frame(width: 9, height: 9)
+                    Text("Idle").font(.subheadline).foregroundStyle(.secondary)
+                }
             }
         }
         .padding()
@@ -59,13 +67,26 @@ struct DashboardView: View {
         }
     }
 
-    // MARK: - Right-side task panel
+    // MARK: - Task panel
     private var taskPanel: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("Active Tasks")
-                .font(.headline)
-                .padding()
+            // Panel header with overall progress
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Active Tasks").font(.headline)
+                if !appState.activeTasks.isEmpty {
+                    let total  = Double(appState.activeTasks.count)
+                    let done   = Double(doneCount)
+                    ProgressView(value: done, total: total)
+                        .tint(.blue)
+                    Text("\(doneCount) of \(appState.activeTasks.count) files complete")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            .padding()
+
             Divider()
+
+            // Per-file task list
             ScrollView {
                 LazyVStack(spacing: 0) {
                     ForEach(appState.activeTasks) { task in
@@ -74,20 +95,34 @@ struct DashboardView: View {
                     }
                 }
             }
+
             Divider()
+
             // Log tail
-            ScrollView {
-                VStack(alignment: .leading, spacing: 2) {
-                    ForEach(appState.pipelineLog.suffix(30), id: \.self) { line in
-                        Text(line)
-                            .font(.system(size: 10, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .leading, spacing: 0) {
+                Text("Log").font(.caption).bold()
+                    .foregroundStyle(.secondary).padding([.horizontal, .top], 8)
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 1) {
+                            ForEach(Array(appState.pipelineLog.enumerated()), id: \.offset) { i, line in
+                                Text(line)
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundStyle(.secondary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .id(i)
+                            }
+                        }
+                        .padding(.horizontal, 8).padding(.bottom, 8)
+                    }
+                    .onChange(of: appState.pipelineLog.count) {
+                        if let last = appState.pipelineLog.indices.last {
+                            proxy.scrollTo(last, anchor: .bottom)
+                        }
                     }
                 }
-                .padding(8)
             }
-            .frame(height: 120)
+            .frame(height: 140)
             .background(Color(NSColor.textBackgroundColor))
         }
     }
@@ -96,25 +131,35 @@ struct DashboardView: View {
     private var emptyState: some View {
         VStack(spacing: 14) {
             Spacer()
-            Image(systemName: "server.rack")
-                .font(.system(size: 48)).foregroundStyle(.secondary)
+            Image(systemName: "server.rack").font(.system(size: 48)).foregroundStyle(.secondary)
             Text("No HyperDecks Configured").font(.title3).bold()
-            Text("Add your devices in the HyperDecks tab.")
-                .foregroundStyle(.secondary)
+            Text("Add your devices in the HyperDecks tab.").foregroundStyle(.secondary)
             Spacer()
         }
     }
 
     // MARK: - Action bar
     private var actionBar: some View {
-        HStack {
+        HStack(spacing: 16) {
+            // Last run summary
+            if let last = appState.runHistory.first, !appState.isRunning {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Last run: \(last.finishedAt.formatted(.relative(presentation: .named)))")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Text("\(last.converted) converted · \(last.durationFormatted)")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                .padding(.leading)
+            }
+
             Spacer()
+
             if appState.isRunning {
                 Button(role: .destructive) {
                     pipeline.stop()
                 } label: {
                     Label("Stop Pipeline", systemImage: "stop.fill")
-                        .padding(.horizontal, 32).padding(.vertical, 8)
+                        .padding(.horizontal, 28).padding(.vertical, 8)
                 }
                 .buttonStyle(.borderedProminent).tint(.red)
             } else {
@@ -122,13 +167,24 @@ struct DashboardView: View {
                     Task { await pipeline.runAll() }
                 } label: {
                     Label("Start Sync & Transcode", systemImage: "play.fill")
-                        .padding(.horizontal, 32).padding(.vertical, 8)
+                        .padding(.horizontal, 28).padding(.vertical, 8)
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(appState.hyperDecks.isEmpty)
             }
+
             Spacer()
         }
         .padding()
+    }
+
+    // MARK: - Helpers
+    private func statPill(_ label: String, color: Color) -> some View {
+        Text(label)
+            .font(.system(size: 11, weight: .semibold))
+            .padding(.horizontal, 10).padding(.vertical, 4)
+            .background(color.opacity(0.15))
+            .foregroundStyle(color)
+            .clipShape(Capsule())
     }
 }

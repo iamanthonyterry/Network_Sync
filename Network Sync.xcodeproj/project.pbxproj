@@ -36,33 +36,9 @@
 		64E3101B2FDB0EEF00BD0F01 /* UserNotificationsUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UserNotificationsUI.framework; path = System/Library/Frameworks/UserNotificationsUI.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
-/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		6423BC7D2FD7360C00E45F5E /* Exceptions for "Network Sync" folder in "Network Sync" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				Support/mountSMBVolume.swift,
-			);
-			target = 648E39BF2FD6334E00EE3177 /* Network Sync */;
-		};
-/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
-
-/* Begin PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
-		6423BC7E2FD7360C00E45F5E /* Exceptions for "Network Sync" folder in "Copy Bundle Resources" phase from "Network Sync" target */ = {
-			isa = PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet;
-			buildPhase = 648E39BE2FD6334E00EE3177 /* Resources */;
-			membershipExceptions = (
-				Support/mountSMBVolume.swift,
-			);
-		};
-/* End PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
-
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		648E39C22FD6334E00EE3177 /* Network Sync */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				6423BC7D2FD7360C00E45F5E /* Exceptions for "Network Sync" folder in "Network Sync" target */,
-				6423BC7E2FD7360C00E45F5E /* Exceptions for "Network Sync" folder in "Copy Bundle Resources" phase from "Network Sync" target */,
-			);
 			path = "Network Sync";
 			sourceTree = "<group>";
 		};
