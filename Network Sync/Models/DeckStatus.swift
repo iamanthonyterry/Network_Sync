@@ -80,7 +80,7 @@ struct SyncTask: Identifiable {
 }
 
 // MARK: - Completed run history (persisted)
-struct PipelineRun: Identifiable, Codable {
+struct PipelineRun: Identifiable, Codable, Hashable {
     var id = UUID()
     var startedAt: Date
     var finishedAt: Date

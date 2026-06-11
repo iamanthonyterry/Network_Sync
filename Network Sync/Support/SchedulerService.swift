@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 
 // Watches the clock and fires the pipeline when the scheduled time arrives.
 // Uses a 30-second polling interval — lightweight and reliable without needing

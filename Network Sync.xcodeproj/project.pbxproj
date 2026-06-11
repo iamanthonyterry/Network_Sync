@@ -6,6 +6,11 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		64E3101C2FDB0EEF00BD0F01 /* UserNotifications.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 64E3101A2FDB0EEF00BD0F01 /* UserNotifications.framework */; };
+		64E3101D2FDB0EEF00BD0F01 /* UserNotificationsUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 64E3101B2FDB0EEF00BD0F01 /* UserNotificationsUI.framework */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		648E39D32FD6335100EE3177 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -27,6 +32,8 @@
 		648E39C02FD6334E00EE3177 /* Network Sync.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Network Sync.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		648E39D22FD6335100EE3177 /* Network SyncTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Network SyncTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		648E39DC2FD6335100EE3177 /* Network SyncUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Network SyncUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		64E3101A2FDB0EEF00BD0F01 /* UserNotifications.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UserNotifications.framework; path = System/Library/Frameworks/UserNotifications.framework; sourceTree = SDKROOT; };
+		64E3101B2FDB0EEF00BD0F01 /* UserNotificationsUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UserNotificationsUI.framework; path = System/Library/Frameworks/UserNotificationsUI.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -76,6 +83,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				64E3101D2FDB0EEF00BD0F01 /* UserNotificationsUI.framework in Frameworks */,
+				64E3101C2FDB0EEF00BD0F01 /* UserNotifications.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -102,6 +111,7 @@
 				648E39C22FD6334E00EE3177 /* Network Sync */,
 				648E39D52FD6335100EE3177 /* Network SyncTests */,
 				648E39DF2FD6335100EE3177 /* Network SyncUITests */,
+				64E310192FDB0EEF00BD0F01 /* Frameworks */,
 				648E39C12FD6334E00EE3177 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -114,6 +124,15 @@
 				648E39DC2FD6335100EE3177 /* Network SyncUITests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		64E310192FDB0EEF00BD0F01 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				64E3101A2FDB0EEF00BD0F01 /* UserNotifications.framework */,
+				64E3101B2FDB0EEF00BD0F01 /* UserNotificationsUI.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -421,7 +440,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = GAYT638PXY;
+				DEVELOPMENT_TEAM = BPZ4H86MC6;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_INCOMING_NETWORK_CONNECTIONS = YES;
@@ -464,7 +483,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = GAYT638PXY;
+				DEVELOPMENT_TEAM = BPZ4H86MC6;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_INCOMING_NETWORK_CONNECTIONS = YES;

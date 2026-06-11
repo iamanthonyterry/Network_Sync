@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 
 @MainActor
 class PipelineEngine: ObservableObject {
@@ -46,6 +47,27 @@ class PipelineEngine: ObservableObject {
 
         await syncAndConvert(deck: deck)
         finishRun()
+    }
+
+    // MARK: - SMB Mount
+    private func mountSMBVolume(location: SyncLocation) async -> Bool {
+        if FileManager.default.fileExists(atPath: location.mountPath) { return true }
+        let script = "mount volume \"smb://\(location.ipAddress)/\(location.volumeName)\" as user name \"\(location.username)\" with password \"\(location.password)\""
+        return await withCheckedContinuation { continuation in
+            DispatchQueue.global().async {
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+                process.arguments = ["-e", script]
+                do {
+                    try process.run()
+                    process.waitUntilExit()
+                    Thread.sleep(forTimeInterval: 2)
+                    continuation.resume(returning: FileManager.default.fileExists(atPath: location.mountPath))
+                } catch {
+                    continuation.resume(returning: false)
+                }
+            }
+        }
     }
 
     // MARK: - Stop
