@@ -53,14 +53,14 @@ struct ConversionSettings: Codable {
     }
 }
 
-// MARK: - Per-file sync task
+// MARK: - Per-file sync task (live, in-memory only)
 struct SyncTask: Identifiable {
     var id = UUID()
     var fileName: String
     var deckName: String
     var phase: Phase = .queued
-    var syncProgress: Double = 0     // 0.0 – 1.0
-    var convertProgress: Double = 0  // 0.0 – 1.0
+    var syncProgress: Double = 0
+    var convertProgress: Double = 0
     var errorMessage: String? = nil
 
     enum Phase: String {
@@ -76,5 +76,40 @@ struct SyncTask: Identifiable {
         case .done:        return 1.0
         case .error:       return 0
         }
+    }
+}
+
+// MARK: - Completed run history (persisted)
+struct PipelineRun: Identifiable, Codable {
+    var id = UUID()
+    var startedAt: Date
+    var finishedAt: Date
+    var converted: Int
+    var skipped: Int
+    var errors: Int
+    var decksProcessed: [String]
+    var log: [String]
+
+    var duration: TimeInterval { finishedAt.timeIntervalSince(startedAt) }
+
+    var durationFormatted: String {
+        let s = Int(duration)
+        if s < 60 { return "\(s)s" }
+        let m = s / 60; let r = s % 60
+        return r == 0 ? "\(m)m" : "\(m)m \(r)s"
+    }
+}
+
+// MARK: - Schedule Settings
+struct ScheduleSettings: Codable {
+    var isEnabled: Bool = false
+    var hour: Int = 2       // 2 AM default
+    var minute: Int = 0
+    var repeatDaily: Bool = true
+
+    var displayTime: String {
+        let h = hour % 12 == 0 ? 12 : hour % 12
+        let ampm = hour < 12 ? "AM" : "PM"
+        return String(format: "%d:%02d %@", h, minute, ampm)
     }
 }
