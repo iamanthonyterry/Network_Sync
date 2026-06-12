@@ -28,6 +28,9 @@ class AppState: ObservableObject {
     @Published var activeTasks: [SyncTask] = []
     @Published var pipelineLog: [String] = []
 
+    // Failed tasks eligible for retry
+    var failedTasks: [SyncTask] { activeTasks.filter { $0.phase == .error } }
+
     // MARK: - Current run counters
     var currentRunConverted = 0
     var currentRunSkipped   = 0
@@ -36,7 +39,7 @@ class AppState: ObservableObject {
     var currentRunStart: Date = Date()
 
     init() {
-        hyperDecks         = load([HyperDeck].self,        key: "hyperDecks")         ?? Self.defaultDecks
+        hyperDecks         = load([HyperDeck].self,        key: "hyperDecks")         ?? []
         syncLocation       = load(SyncLocation.self,       key: "syncLocation")       ?? SyncLocation()
         conversionSettings = load(ConversionSettings.self, key: "conversionSettings") ?? ConversionSettings()
         scheduleSettings   = load(ScheduleSettings.self,   key: "scheduleSettings")   ?? ScheduleSettings()
@@ -101,20 +104,4 @@ class AppState: ObservableObject {
         return try? JSONDecoder().decode(type, from: data)
     }
 
-    // MARK: - Default seed data
-    private static var defaultDecks: [HyperDeck] {
-        [("ISO 1",  "192.168.2.138", "usb/Extreme Pro"),
-         ("ISO 2",  "192.168.2.139", "usb/Extreme Pro"),
-         ("ISO 3",  "192.168.2.140", "usb/Extreme Pro"),
-         ("ISO 4",  "192.168.2.141", "usb/ISO_4"),
-         ("ISO 5",  "192.168.2.142", "usb/ISO_5"),
-         ("ISO 6",  "192.168.2.129", "usb/ISO 6"),
-         ("ISO 7",  "192.168.2.128", "usb/ISO 7"),
-         ("ISO 8",  "192.168.2.127", "usb/ISO 8"),
-         ("ISO 9",  "192.168.2.126", "usb/ISO 9"),
-         ("ISO 10", "192.168.2.125", "usb/ISO 10")]
-            .enumerated().map { i, t in
-                HyperDeck(name: t.0, ipAddress: t.1, remotePath: t.2, sortOrder: i)
-            }
-    }
 }

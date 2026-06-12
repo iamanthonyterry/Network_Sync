@@ -8,9 +8,9 @@ struct DeckEditSheet: View {
 
     @State private var name       = ""
     @State private var ipAddress  = ""
-    @State private var remotePath = "usb/Extreme Pro"
-    @State private var username   = "lpproduction"
-    @State private var password   = "7404"
+    @State private var remotePath = ""
+    @State private var username   = ""
+    @State private var password   = ""
     @State private var pingStatus: DeckStatus = .unknown
     @State private var isTesting  = false
 
@@ -18,9 +18,9 @@ struct DeckEditSheet: View {
         existingDeck = deck
         _name       = State(initialValue: deck?.name       ?? "")
         _ipAddress  = State(initialValue: deck?.ipAddress  ?? "")
-        _remotePath = State(initialValue: deck?.remotePath ?? "usb/Extreme Pro")
-        _username   = State(initialValue: deck?.username   ?? "lpproduction")
-        _password   = State(initialValue: deck?.password   ?? "7404")
+        _remotePath = State(initialValue: deck?.remotePath ?? "")
+        _username   = State(initialValue: deck?.username   ?? "")
+        _password   = State(initialValue: deck?.password   ?? "")
     }
 
     var canSave: Bool { !name.isEmpty && !ipAddress.isEmpty }
@@ -45,15 +45,15 @@ struct DeckEditSheet: View {
                         TextField("e.g. ISO 1", text: $name).textFieldStyle(.roundedBorder)
                     }
                     LabeledContent("IP Address") {
-                        TextField("192.168.2.138", text: $ipAddress).textFieldStyle(.roundedBorder)
+                        TextField("192.168.x.x", text: $ipAddress).textFieldStyle(.roundedBorder)
                     }
                     LabeledContent("Remote Path") {
-                        TextField("usb/Extreme Pro", text: $remotePath).textFieldStyle(.roundedBorder)
+                        TextField("usb/DriveName", text: $remotePath).textFieldStyle(.roundedBorder)
                     }
                 }
                 Section("Credentials") {
                     LabeledContent("Username") {
-                        TextField("lpproduction", text: $username).textFieldStyle(.roundedBorder)
+                        TextField("Username", text: $username).textFieldStyle(.roundedBorder)
                     }
                     LabeledContent("Password") {
                         SecureField("Password", text: $password).textFieldStyle(.roundedBorder)

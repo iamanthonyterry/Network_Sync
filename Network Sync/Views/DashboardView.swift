@@ -154,6 +154,18 @@ struct DashboardView: View {
 
             Spacer()
 
+            // Retry button — visible after a run with errors
+            if !appState.isRunning && !appState.failedTasks.isEmpty {
+                Button {
+                    Task { await pipeline.retryFailed() }
+                } label: {
+                    Label("Retry \(appState.failedTasks.count) Failed", systemImage: "arrow.counterclockwise")
+                        .padding(.horizontal, 16).padding(.vertical, 8)
+                }
+                .buttonStyle(.bordered)
+                .tint(.orange)
+            }
+
             if appState.isRunning {
                 Button(role: .destructive) {
                     pipeline.stop()

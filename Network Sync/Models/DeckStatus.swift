@@ -11,17 +11,17 @@ struct HyperDeck: Identifiable, Codable {
     var name: String
     var ipAddress: String
     var remotePath: String
-    var username: String = "lpproduction"
-    var password: String = "7404"
+    var username: String = ""
+    var password: String = ""
     var sortOrder: Int = 0
 }
 
 // MARK: - Sync Destination
 struct SyncLocation: Codable {
-    var ipAddress: String = "192.168.2.119"
-    var volumeName: String = "lp service backup"
-    var username: String = "guest"
-    var password: String = "7404"
+    var ipAddress: String = ""
+    var volumeName: String = ""
+    var username: String = ""
+    var password: String = ""
     var basePath: String = "ISO Records"
 
     var mountPath: String { "/Volumes/\(volumeName)" }

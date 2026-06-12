@@ -52,6 +52,62 @@ class PipelineEngine: ObservableObject {
         finishRun()
     }
 
+    // MARK: - Retry failed tasks
+    func retryFailed() async {
+        let failed = appState.failedTasks
+        guard !failed.isEmpty, !appState.isRunning else { return }
+        appState.isRunning = true
+        appState.log("↩ Retrying \(failed.count) failed file(s)...")
+
+        let mounted = await mountSMBVolume(location: appState.syncLocation)
+        guard mounted else {
+            appState.log("❌ Could not mount SMB volume.")
+            appState.isRunning = false
+            return
+        }
+
+        // Group failed tasks by deck name
+        let byDeck = Dictionary(grouping: failed, by: \.deckName)
+        for (deckName, tasks) in byDeck {
+            guard let deck = appState.hyperDecks.first(where: { $0.name == deckName }) else { continue }
+            let deckDestDir = URL(fileURLWithPath: appState.syncLocation.recordsPath)
+                .appendingPathComponent(deckName)
+            var toConvert: [URL] = []
+
+            for task in tasks {
+                // Reset task state
+                if let i = appState.activeTasks.firstIndex(where: { $0.id == task.id }) {
+                    appState.activeTasks[i].phase           = .downloading
+                    appState.activeTasks[i].syncProgress    = 0
+                    appState.activeTasks[i].convertProgress = 0
+                    appState.activeTasks[i].errorMessage    = nil
+                }
+
+                let destURL = deckDestDir.appendingPathComponent(task.fileName)
+                try? FileManager.default.removeItem(at: destURL)
+
+                let ok = await FTPService.downloadFile(
+                    named: task.fileName, from: deck, to: destURL
+                ) { [weak self] pct in self?.updateTask(id: task.id, syncProgress: pct) }
+
+                if ok {
+                    updateTask(id: task.id, phase: .converting, syncProgress: 1)
+                    toConvert.append(destURL)
+                } else {
+                    updateTask(id: task.id, phase: .error, errorMessage: "Retry failed")
+                    appState.currentRunErrors += 1
+                }
+            }
+
+            if !toConvert.isEmpty {
+                await convertInParallel(files: toConvert, deckDestDir: deckDestDir)
+            }
+        }
+
+        appState.isRunning = false
+        appState.log("↩ Retry complete")
+    }
+
     // MARK: - Stop
     func stop() {
         appState.isRunning = false
@@ -66,16 +122,19 @@ class PipelineEngine: ObservableObject {
         let base = URL(fileURLWithPath: appState.syncLocation.recordsPath)
         appState.log("🧹 Running \(days)-day retention cleanup...")
 
-        await Task.detached(priority: .background) {
+        let deletedCount = await Task.detached(priority: .background) {
             let fm = FileManager.default
             guard let enumerator = fm.enumerator(
                 at: base,
                 includingPropertiesForKeys: [.contentModificationDateKey],
                 options: [.skipsHiddenFiles]
-            ) else { return }
+            ) else { return 0 }
+
+            // Collect URLs first to avoid iterating NSEnumerator in async context
+            let urls = enumerator.compactMap { $0 as? URL }
 
             var deleted = 0
-            for case let url as URL in enumerator {
+            for url in urls {
                 guard url.pathExtension.lowercased() == "mp4" ||
                       url.lastPathComponent.hasSuffix(".done") else { continue }
                 if let mod = try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
@@ -84,10 +143,10 @@ class PipelineEngine: ObservableObject {
                     deleted += 1
                 }
             }
-            await MainActor.run {
-                self.appState.log("  🗑 Cleanup removed \(deleted) old file(s)")
-            }
+            return deleted
         }.value
+
+        appState.log("  🗑 Cleanup removed \(deletedCount) old file(s)")
     }
 
     // MARK: - Core interleaved logic
