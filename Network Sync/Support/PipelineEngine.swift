@@ -15,15 +15,14 @@ class PipelineEngine: ObservableObject {
         appState.log("▶ Pipeline started")
 
         appState.log("Mounting \(appState.syncLocation.volumeName)...")
-        let mounted = await mountSMBVolume(location: appState.syncLocation)
-        guard mounted else {
+        guard let resolvedPath = await mountSMBVolume(location: appState.syncLocation) else {
             appState.log("❌ Could not mount SMB volume. Aborting.")
             appState.isRunning = false
             return
         }
-        appState.log("✅ Mounted at \(appState.syncLocation.mountPath)")
+        appState.syncLocation.resolvedMountPath = resolvedPath
+        appState.log("✅ Mounted at \(resolvedPath)")
 
-        // Storage cleanup before new run
         await runStorageCleanup()
 
         for deck in appState.hyperDecks {
@@ -41,12 +40,13 @@ class PipelineEngine: ObservableObject {
         appState.beginRun()
         appState.log("▶ Single-deck run: \(deck.name)")
 
-        let mounted = await mountSMBVolume(location: appState.syncLocation)
-        guard mounted else {
+        guard let resolvedPath = await mountSMBVolume(location: appState.syncLocation) else {
             appState.log("❌ Could not mount SMB volume.")
             appState.isRunning = false
             return
         }
+        appState.syncLocation.resolvedMountPath = resolvedPath
+        appState.log("✅ Mounted at \(resolvedPath)")
 
         await syncAndConvert(deck: deck)
         finishRun()
@@ -59,14 +59,13 @@ class PipelineEngine: ObservableObject {
         appState.isRunning = true
         appState.log("↩ Retrying \(failed.count) failed file(s)...")
 
-        let mounted = await mountSMBVolume(location: appState.syncLocation)
-        guard mounted else {
+        guard let resolvedPath = await mountSMBVolume(location: appState.syncLocation) else {
             appState.log("❌ Could not mount SMB volume.")
             appState.isRunning = false
             return
         }
+        appState.syncLocation.resolvedMountPath = resolvedPath
 
-        // Group failed tasks by deck name
         let byDeck = Dictionary(grouping: failed, by: \.deckName)
         for (deckName, tasks) in byDeck {
             guard let deck = appState.hyperDecks.first(where: { $0.name == deckName }) else { continue }
@@ -75,7 +74,6 @@ class PipelineEngine: ObservableObject {
             var toConvert: [URL] = []
 
             for task in tasks {
-                // Reset task state
                 if let i = appState.activeTasks.firstIndex(where: { $0.id == task.id }) {
                     appState.activeTasks[i].phase           = .downloading
                     appState.activeTasks[i].syncProgress    = 0
@@ -130,9 +128,7 @@ class PipelineEngine: ObservableObject {
                 options: [.skipsHiddenFiles]
             ) else { return 0 }
 
-            // Collect URLs first to avoid iterating NSEnumerator in async context
             let urls = enumerator.compactMap { $0 as? URL }
-
             var deleted = 0
             for url in urls {
                 guard url.pathExtension.lowercased() == "mp4" ||
@@ -149,7 +145,7 @@ class PipelineEngine: ObservableObject {
         appState.log("  🗑 Cleanup removed \(deletedCount) old file(s)")
     }
 
-    // MARK: - Core interleaved logic
+    // MARK: - Core sync + convert per deck
     private func syncAndConvert(deck: HyperDeck) async {
         appState.log("📡 Scanning \(deck.name) (\(deck.ipAddress))...")
         if !appState.currentRunDecks.contains(deck.name) {
@@ -167,14 +163,13 @@ class PipelineEngine: ObservableObject {
             .appendingPathComponent(deck.name)
         try? FileManager.default.createDirectory(at: deckDestDir, withIntermediateDirectories: true)
 
-        // Download all files for this deck sequentially
         var filesToConvert: [URL] = []
 
         for fileName in remoteFiles {
             guard appState.isRunning else { return }
 
-            let destURL    = deckDestDir.appendingPathComponent(fileName)
-            let receiptURL = deckDestDir.appendingPathComponent(fileName + ".done")
+            let destURL      = deckDestDir.appendingPathComponent(fileName)
+            let receiptURL   = deckDestDir.appendingPathComponent(fileName + ".done")
             let convertedURL = deckDestDir
                 .appendingPathComponent("Converted")
                 .appendingPathComponent((fileName as NSString).deletingPathExtension + ".mp4")
@@ -186,7 +181,6 @@ class PipelineEngine: ObservableObject {
                 continue
             }
 
-            // Download (with 1 retry on failure)
             let task = addTask(fileName: fileName, deckName: deck.name)
             updateTask(id: task.id, phase: .downloading, syncProgress: 0)
             appState.log("  ⬇ Downloading \(fileName)...")
@@ -215,7 +209,6 @@ class PipelineEngine: ObservableObject {
             filesToConvert.append(destURL)
         }
 
-        // Convert with parallelism
         guard !filesToConvert.isEmpty, appState.isRunning else { return }
         await convertInParallel(files: filesToConvert, deckDestDir: deckDestDir)
     }
@@ -226,7 +219,6 @@ class PipelineEngine: ObservableObject {
         let convertedDir = deckDestDir.appendingPathComponent("Converted")
         try? FileManager.default.createDirectory(at: convertedDir, withIntermediateDirectories: true)
 
-        // Chunk into batches of maxJobs
         let batches = stride(from: 0, to: files.count, by: maxJobs).map {
             Array(files[$0 ..< min($0 + maxJobs, files.count)])
         }
@@ -244,14 +236,11 @@ class PipelineEngine: ObservableObject {
                         let receiptURL = inputURL.deletingLastPathComponent()
                             .appendingPathComponent(fileName + ".done")
 
-                        // Find matching task
                         let taskID = await MainActor.run {
                             self.appState.activeTasks.first { $0.fileName == fileName }?.id
                         }
 
-                        await MainActor.run {
-                            self.appState.log("  🎬 Converting \(fileName)...")
-                        }
+                        await MainActor.run { self.appState.log("  🎬 Converting \(fileName)...") }
 
                         let ok = await ConversionService.convert(
                             input: inputURL,
@@ -259,17 +248,13 @@ class PipelineEngine: ObservableObject {
                             settings: self.appState.conversionSettings
                         ) { pct in
                             if let id = taskID {
-                                Task { @MainActor in
-                                    self.updateTask(id: id, convertProgress: pct)
-                                }
+                                Task { @MainActor in self.updateTask(id: id, convertProgress: pct) }
                             }
                         }
 
                         await MainActor.run {
                             if ok {
-                                if let id = taskID {
-                                    self.updateTask(id: id, phase: .done, convertProgress: 1)
-                                }
+                                if let id = taskID { self.updateTask(id: id, phase: .done, convertProgress: 1) }
                                 self.appState.log("  ✅ Converted → \(outputURL.lastPathComponent)")
                                 self.appState.currentRunConverted += 1
                                 if self.appState.conversionSettings.deleteOriginalsAfterConvert {
@@ -277,9 +262,7 @@ class PipelineEngine: ObservableObject {
                                     FileManager.default.createFile(atPath: receiptURL.path, contents: nil)
                                 }
                             } else {
-                                if let id = taskID {
-                                    self.updateTask(id: id, phase: .error, errorMessage: "Conversion failed")
-                                }
+                                if let id = taskID { self.updateTask(id: id, phase: .error, errorMessage: "Conversion failed") }
                                 self.appState.log("  ❌ Conversion failed: \(fileName)")
                                 self.appState.currentRunErrors += 1
                             }
@@ -292,6 +275,7 @@ class PipelineEngine: ObservableObject {
 
     // MARK: - Finish
     private func finishRun() {
+        appState.syncLocation.resolvedMountPath = nil   // clear for next run
         appState.isRunning = false
         let c = appState.currentRunConverted
         let e = appState.currentRunErrors
@@ -300,25 +284,14 @@ class PipelineEngine: ObservableObject {
         NotificationService.sendCompletion(converted: c, errors: e)
     }
 
-    // MARK: - SMB Mount
-    private func mountSMBVolume(location: SyncLocation) async -> Bool {
-        if FileManager.default.fileExists(atPath: location.mountPath) { return true }
-        let script = "mount volume \"smb://\(location.ipAddress)/\(location.volumeName)\" as user name \"\(location.username)\" with password \"\(location.password)\""
-        return await withCheckedContinuation { continuation in
-            DispatchQueue.global().async {
-                let process = Process()
-                process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-                process.arguments = ["-e", script]
-                do {
-                    try process.run()
-                    process.waitUntilExit()
-                    Thread.sleep(forTimeInterval: 2)
-                    continuation.resume(returning: FileManager.default.fileExists(atPath: location.mountPath))
-                } catch {
-                    continuation.resume(returning: false)
-                }
-            }
-        }
+    // MARK: - SMB Mount — returns the actual /Volumes path
+    private func mountSMBVolume(location: SyncLocation) async -> String? {
+        await SMBService.mountAndResolve(
+            ip:       location.ipAddress,
+            volume:   location.volumeName,
+            username: location.username,
+            password: location.password
+        )
     }
 
     // MARK: - Task helpers

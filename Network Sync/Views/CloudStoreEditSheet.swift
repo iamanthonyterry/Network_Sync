@@ -1,26 +1,27 @@
 import SwiftUI
 import Network
 
-struct DeckEditSheet: View {
+struct CloudStoreEditSheet: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.dismiss) private var dismiss
-    let existingDeck: HyperDeck?
+    let existingStore: CloudStore?
 
     @State private var name       = ""
     @State private var ipAddress  = ""
-    @State private var remotePath = ""
+    @State private var volumeName = ""
     @State private var username   = ""
     @State private var password   = ""
     @State private var pingStatus: DeckStatus = .unknown
     @State private var isTesting  = false
+    @State private var mountResult: String? = nil
 
-    init(deck: HyperDeck?) {
-        existingDeck = deck
-        _name       = State(initialValue: deck?.name       ?? "")
-        _ipAddress  = State(initialValue: deck?.ipAddress  ?? "")
-        _remotePath = State(initialValue: deck?.remotePath ?? "")
-        _username   = State(initialValue: deck?.username   ?? "")
-        _password   = State(initialValue: deck?.password   ?? "")
+    init(store: CloudStore?) {
+        existingStore = store
+        _name       = State(initialValue: store?.name       ?? "")
+        _ipAddress  = State(initialValue: store?.ipAddress  ?? "")
+        _volumeName = State(initialValue: store?.volumeName ?? "")
+        _username   = State(initialValue: store?.username   ?? "")
+        _password   = State(initialValue: store?.password   ?? "")
     }
 
     var canSave: Bool { !name.isEmpty && !ipAddress.isEmpty }
@@ -28,11 +29,11 @@ struct DeckEditSheet: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text(existingDeck == nil ? "Add HyperDeck" : "Edit HyperDeck")
+                Text(existingStore == nil ? "Add Cloud Store" : "Edit Cloud Store")
                     .font(.title2).bold()
                 Spacer()
                 Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
-                Button(existingDeck == nil ? "Add" : "Save") { save() }
+                Button(existingStore == nil ? "Add" : "Save") { save() }
                     .buttonStyle(.borderedProminent).disabled(!canSave)
                     .keyboardShortcut(.defaultAction)
             }
@@ -42,13 +43,13 @@ struct DeckEditSheet: View {
             Form {
                 Section("Device Info") {
                     LabeledContent("Name") {
-                        TextField("e.g. ISO 1", text: $name).textFieldStyle(.roundedBorder)
+                        TextField("e.g. Cloud Store 1", text: $name).textFieldStyle(.roundedBorder)
                     }
                     LabeledContent("IP Address") {
                         TextField("192.168.x.x", text: $ipAddress).textFieldStyle(.roundedBorder)
                     }
-                    LabeledContent("Remote Path") {
-                        TextField("usb/DriveName", text: $remotePath).textFieldStyle(.roundedBorder)
+                    LabeledContent("Volume Name") {
+                        TextField("e.g. CloudStore", text: $volumeName).textFieldStyle(.roundedBorder)
                     }
                 }
                 Section("Credentials") {
@@ -64,18 +65,23 @@ struct DeckEditSheet: View {
                         Button(action: testConnection) {
                             if isTesting {
                                 ProgressView().controlSize(.small)
-                                Text("Testing...")
+                                Text("Testing…")
                             } else {
-                                Label("Test Connection", systemImage: "network")
+                                Label("Test & Mount", systemImage: "network")
                             }
                         }.disabled(ipAddress.isEmpty || isTesting)
                         Spacer()
-                        if pingStatus != .unknown {
+                        if let result = mountResult {
+                            Text(result)
+                                .font(.subheadline)
+                                .foregroundStyle(result.hasPrefix("✅") ? .green : .red)
+                        } else if pingStatus != .unknown {
                             Label(
-                                pingStatus == .online ? "Connected" : "No Response",
+                                pingStatus == .online ? "Reachable" : "No Response",
                                 systemImage: pingStatus == .online ? "checkmark.circle.fill" : "xmark.circle.fill"
-                            ).foregroundStyle(pingStatus == .online ? .green : .red)
-                             .font(.subheadline)
+                            )
+                            .foregroundStyle(pingStatus == .online ? .green : .red)
+                            .font(.subheadline)
                         }
                     }
                 }
@@ -86,26 +92,43 @@ struct DeckEditSheet: View {
     }
 
     private func save() {
-        if var d = existingDeck {
-            d.name = name; d.ipAddress = ipAddress
-            d.remotePath = remotePath; d.username = username; d.password = password
-            appState.updateDeck(d)
+        if var s = existingStore {
+            s.name = name; s.ipAddress = ipAddress
+            s.volumeName = volumeName; s.username = username; s.password = password
+            appState.updateCloudStore(s)
         } else {
-            appState.addDeck(HyperDeck(name: name, ipAddress: ipAddress,
-                                       remotePath: remotePath, username: username, password: password))
+            appState.addCloudStore(CloudStore(
+                name: name, ipAddress: ipAddress,
+                volumeName: volumeName, username: username, password: password
+            ))
         }
         dismiss()
     }
 
     private func testConnection() {
-        isTesting = true; pingStatus = .unknown
+        isTesting = true
+        pingStatus = .unknown
+        mountResult = nil
+
         Task {
-            guard let port = NWEndpoint.Port(rawValue: UInt16(21)) else {
+            // 1. TCP reachability check on SMB port
+            guard let port = NWEndpoint.Port(rawValue: UInt16(445)) else {
                 isTesting = false; return
             }
             let conn = NWConnection(host: NWEndpoint.Host(ipAddress), port: port, using: .tcp)
             conn.start(queue: .global())
             pingStatus = await resolveConnectionStatus(conn)
+
+            guard pingStatus == .online else {
+                isTesting = false; return
+            }
+
+            // 2. Attempt SMB mount
+            let mounted = await SMBService.mount(
+                ip: ipAddress, volume: volumeName,
+                username: username, password: password
+            )
+            mountResult = mounted ? "✅ Mounted at /Volumes/\(volumeName)" : "❌ Mount failed"
             isTesting = false
         }
     }

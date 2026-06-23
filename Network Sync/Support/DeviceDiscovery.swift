@@ -2,91 +2,150 @@ import Foundation
 import Network
 import Combine
 
+@MainActor
 class DeviceDiscovery: ObservableObject {
     @Published var discoveredDecks: [HyperDeck] = []
-    private var browser: NWBrowser?
-    
+    @Published var discoveredSwitchers: [BlackmagicSwitcher] = []
+    @Published var discoveredCloudStores: [CloudStore] = []
+    @Published var isScanning = false
+
+    private var browsers: [NWBrowser] = []
+    private let browserQueue = DispatchQueue(label: "com.churchsync.discovery", qos: .background)
+
+    // MARK: - Public API
+
     func startScanning() {
+        stopScanning()
         discoveredDecks.removeAll()
-        
-        let parameters = NWParameters()
-        parameters.includePeerToPeer = true
-        
-        // FIX 1: Universal static factory constructor for Bonjour descriptors
-        let ftpDescriptor = NWBrowser.Descriptor.bonjour(type: "_ftp._tcp", domain: "local.")
-        browser = NWBrowser(for: ftpDescriptor, using: parameters)
-        
-        browser?.stateUpdateHandler = { state in
-            print("📡 Discovery Browser State: \(state)")
-        }
-        
-        browser?.browseResultsChangedHandler = { [weak self] results, _ in
-            guard let self = self else { return }
-            
-            for result in results {
-                // FIX 2: Safely extract the service metadata name by parsing the endpoint description string
-                let endpointDescription = result.endpoint.debugDescription
-                
-                if endpointDescription.lowercased().contains("hyperdeck") || endpointDescription.lowercased().contains("iso") {
-                    // Extract a clean display name out of the string wrapper
-                    let cleanName = result.endpoint.cleanServiceName ?? "HyperDeck"
-                    self.resolveIP(for: result.endpoint, serviceName: cleanName)
-                }
-            }
-        }
-        
-        browser?.start(queue: .global(qos: .background))
-        print("🔍 Network scanning for HyperDecks initialized...")
+        discoveredSwitchers.removeAll()
+        discoveredCloudStores.removeAll()
+        isScanning = true
+
+        startBrowser(type: "_ftp._tcp",       handler: handleFTPResult)
+        startBrowser(type: "_blackmagic._tcp", handler: handleBlackmagicResult)
+        startBrowser(type: "_smb._tcp",        handler: handleSMBResult)
     }
-    
+
     func stopScanning() {
-        browser?.cancel()
-        browser = nil
-        print("🛑 Network scanning stopped.")
+        browsers.forEach { $0.cancel() }
+        browsers.removeAll()
+        isScanning = false
     }
-    
-    private func resolveIP(for endpoint: NWEndpoint, serviceName: String) {
-        let connection = NWConnection(to: endpoint, using: .tcp)
-        
-        connection.stateUpdateHandler = { [weak self] state in
-            guard let self = self else { return }
-            
-            if case .ready = state {
-                if let remoteEndpoint = connection.currentPath?.remoteEndpoint,
-                   case let .hostPort(host, _) = remoteEndpoint {
-                    
-                    // Force extract the raw IPv4 string representation safely
-                    let ipAddress = host.interface?.name ?? String(describing: host)
-                    let cleanIP = ipAddress.components(separatedBy: "%").first ?? ipAddress
-                    
-                    DispatchQueue.main.async {
-                        if !self.discoveredDecks.contains(where: { $0.ipAddress == cleanIP }) {
-                            let newDeck = HyperDeck(
-                                name: serviceName,
-                                ipAddress: cleanIP,
-                                remotePath: "usb/Extreme Pro"
-                            )
-                            self.discoveredDecks.append(newDeck)
-                            print("🎉 Auto-Discovered: \(serviceName) at \(cleanIP)")
-                        }
-                    }
-                }
-                connection.cancel()
+
+    // MARK: - Browser Setup
+
+    private func startBrowser(
+        type: String,
+        handler: @escaping @Sendable (NWBrowser.Result) async -> Void
+    ) {
+        let params = NWParameters()
+        params.includePeerToPeer = true
+        let browser = NWBrowser(
+            for: .bonjour(type: type, domain: "local."),
+            using: params
+        )
+
+        browser.browseResultsChangedHandler = { results, _ in
+            for result in results {
+                Task { await handler(result) }
             }
         }
-        connection.start(queue: .global(qos: .background))
+        browser.start(queue: browserQueue)
+        browsers.append(browser)
+    }
+
+    // MARK: - Result Handlers
+
+    private func handleFTPResult(_ result: NWBrowser.Result) async {
+        let name = result.endpoint.serviceName ?? "HyperDeck"
+        let lower = name.lowercased()
+        guard lower.contains("hyperdeck") || lower.contains("iso") || lower.contains("extreme") else { return }
+
+        guard let ip = await resolveIP(for: result.endpoint), !ip.isEmpty else { return }
+        guard !discoveredDecks.contains(where: { $0.ipAddress == ip }) else { return }
+
+        discoveredDecks.append(HyperDeck(name: name, ipAddress: ip, remotePath: "usb/Extreme Pro"))
+    }
+
+    private func handleBlackmagicResult(_ result: NWBrowser.Result) async {
+        let name = result.endpoint.serviceName ?? "ATEM Switcher"
+
+        guard let ip = await resolveIP(for: result.endpoint), !ip.isEmpty else { return }
+        guard !discoveredSwitchers.contains(where: { $0.ipAddress == ip }) else { return }
+
+        let model = name.contains("ATEM") ? name : "ATEM Switcher"
+        discoveredSwitchers.append(BlackmagicSwitcher(name: name, ipAddress: ip, model: model))
+    }
+
+    private func handleSMBResult(_ result: NWBrowser.Result) async {
+        let name = result.endpoint.serviceName ?? ""
+        let lower = name.lowercased()
+        guard lower.contains("cloud") || lower.contains("blackmagic") else { return }
+
+        guard let ip = await resolveIP(for: result.endpoint), !ip.isEmpty else { return }
+        guard !discoveredCloudStores.contains(where: { $0.ipAddress == ip }) else { return }
+
+        discoveredCloudStores.append(CloudStore(name: name, ipAddress: ip, volumeName: name))
+    }
+
+    // MARK: - IP Resolution
+
+    private func resolveIP(for endpoint: NWEndpoint) async -> String? {
+        await withCheckedContinuation { continuation in
+            // Use a class-based flag so Swift 6 concurrency can safely share it
+            // across the state handler and the timeout closure.
+            final class ResolveState: @unchecked Sendable {
+                var resolved = false
+            }
+            let state = ResolveState()
+            let conn = NWConnection(to: endpoint, using: .tcp)
+
+            conn.stateUpdateHandler = { connectionState in
+                guard !state.resolved else { return }
+                switch connectionState {
+                case .ready:
+                    state.resolved = true
+                    let ip: String?
+                    if let remote = conn.currentPath?.remoteEndpoint,
+                       case let .hostPort(host, _) = remote {
+                        let raw = "\(host)"
+                        ip = raw.components(separatedBy: "%").first
+                    } else {
+                        ip = nil
+                    }
+                    conn.cancel()
+                    continuation.resume(returning: ip)
+                case .failed:
+                    state.resolved = true
+                    conn.cancel()
+                    continuation.resume(returning: nil)
+                default:
+                    break
+                }
+            }
+
+            conn.start(queue: browserQueue)
+
+            // Timeout after 5 s
+            browserQueue.asyncAfter(deadline: .now() + 5) {
+                guard !state.resolved else { return }
+                state.resolved = true
+                conn.cancel()
+                continuation.resume(returning: nil)
+            }
+        }
     }
 }
 
-// MARK: - Extension Helper
-extension NWEndpoint {
-    /// Safely parses the human-readable service identifier name out of Bonjour string descriptors
-    var cleanServiceName: String? {
-        let description = self.debugDescription
-        // Standard format is usually: name._ftp._tcp.local.
-        if let firstDot = description.firstIndex(of: ".") {
-            return String(description[..<firstDot])
-        }
-        return nil
+// MARK: - NWEndpoint helper
+
+private extension NWEndpoint {
+    /// Extracts the Bonjour instance name before the first dot.
+    var serviceName: String? {
+        if case let .service(name, _, _, _) = self { return name }
+        // Fallback: parse from debugDescription
+        let desc = debugDescription
+        guard let dot = desc.firstIndex(of: ".") else { return nil }
+        return String(desc[..<dot])
     }
 }

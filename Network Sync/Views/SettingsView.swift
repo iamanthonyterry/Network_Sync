@@ -6,6 +6,7 @@ struct SettingsView: View {
     @State private var mountResult: String?
     @State private var testingMount = false
     @State private var ffmpegFound: Bool? = nil
+    @State private var selectedStoreID: UUID? = nil   // nil = Custom
 
     var body: some View {
         ScrollView {
@@ -22,30 +23,56 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: - Cloud Store
+    // MARK: - Sync Destination
     private var cloudStoreSection: some View {
-        GroupBox(label: Label("Cloud Store / SMB Destination", systemImage: "externaldrive.connected.to.line.below")) {
+        GroupBox(label: Label("Sync Destination (SMB)", systemImage: "externaldrive.connected.to.line.below")) {
             Form {
-                LabeledContent("IP Address") {
-                    TextField("192.168.2.119", text: $appState.syncLocation.ipAddress)
-                        .textFieldStyle(.roundedBorder)
+                if !appState.cloudStores.isEmpty {
+                    LabeledContent("Device") {
+                        Picker("", selection: $selectedStoreID) {
+                            Text("Custom…").tag(Optional<UUID>.none)
+                            Divider()
+                            ForEach(appState.cloudStores) { store in
+                                Text(store.name).tag(Optional(store.id))
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(width: 200)
+                        .onChange(of: selectedStoreID) { _, id in
+                            guard let id, let store = appState.cloudStores.first(where: { $0.id == id })
+                            else { return }
+                            appState.syncLocation.ipAddress  = store.ipAddress
+                            appState.syncLocation.volumeName = store.volumeName
+                            appState.syncLocation.username   = store.username
+                            appState.syncLocation.password   = store.password
+                            mountResult = nil
+                        }
+                    }
                 }
-                LabeledContent("Volume Name") {
-                    TextField("lp service backup", text: $appState.syncLocation.volumeName)
-                        .textFieldStyle(.roundedBorder)
+
+                if selectedStoreID == nil {
+                    LabeledContent("IP Address") {
+                        TextField("192.168.2.119", text: $appState.syncLocation.ipAddress)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                    LabeledContent("Volume Name") {
+                        TextField("lp service backup", text: $appState.syncLocation.volumeName)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                    LabeledContent("Base Folder") {
+                        TextField("ISO Records", text: $appState.syncLocation.basePath)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                    LabeledContent("Username") {
+                        TextField("guest", text: $appState.syncLocation.username)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                    LabeledContent("Password") {
+                        SecureField("Password", text: $appState.syncLocation.password)
+                            .textFieldStyle(.roundedBorder)
+                    }
                 }
-                LabeledContent("Base Folder") {
-                    TextField("ISO Records", text: $appState.syncLocation.basePath)
-                        .textFieldStyle(.roundedBorder)
-                }
-                LabeledContent("Username") {
-                    TextField("guest", text: $appState.syncLocation.username)
-                        .textFieldStyle(.roundedBorder)
-                }
-                LabeledContent("Password") {
-                    SecureField("Password", text: $appState.syncLocation.password)
-                        .textFieldStyle(.roundedBorder)
-                }
+
                 HStack {
                     Button(action: testMount) {
                         if testingMount {
@@ -194,9 +221,9 @@ struct SettingsView: View {
     private func testMount() {
         testingMount = true; mountResult = nil
         let path = appState.syncLocation.mountPath
-        DispatchQueue.global().async {
+        Task.detached(priority: .userInitiated) {
             let mounted = FileManager.default.fileExists(atPath: path)
-            DispatchQueue.main.async {
+            await MainActor.run {
                 testingMount = false
                 mountResult = mounted
                     ? "✅ Mounted at \(path)"

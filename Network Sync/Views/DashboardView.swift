@@ -8,17 +8,20 @@ struct DashboardView: View {
     var doneCount: Int    { appState.activeTasks.filter { $0.phase == .done }.count }
     var errorCount: Int   { appState.activeTasks.filter { $0.phase == .error }.count }
 
+    var totalDevices: Int  { appState.hyperDecks.count + appState.switchers.count + appState.cloudStores.count }
+    var hasDecks: Bool     { !appState.hyperDecks.isEmpty }
+
     var body: some View {
         VStack(spacing: 0) {
             headerBar
             Divider()
 
-            if appState.hyperDecks.isEmpty {
+            if totalDevices == 0 {
                 emptyState
             } else {
                 HSplitView {
                     deckGrid
-                    if appState.isRunning || !appState.activeTasks.isEmpty {
+                    if !appState.activeTasks.isEmpty {
                         taskPanel.frame(minWidth: 300, maxWidth: 380)
                     }
                 }
@@ -34,7 +37,7 @@ struct DashboardView: View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Sync Dashboard").font(.title2).bold()
-                Text("\(appState.hyperDecks.count) decks · \(appState.syncLocation.volumeName)")
+                Text("\(appState.hyperDecks.count) decks · \(appState.switchers.count) switchers · \(appState.cloudStores.count) cloud stores")
                     .font(.subheadline).foregroundStyle(.secondary)
             }
             Spacer()
@@ -72,12 +75,19 @@ struct DashboardView: View {
         VStack(alignment: .leading, spacing: 0) {
             // Panel header with overall progress
             VStack(alignment: .leading, spacing: 6) {
-                Text("Active Tasks").font(.headline)
+                HStack {
+                    Text("Active Tasks").font(.headline)
+                    Spacer()
+                    if !appState.isRunning && !appState.activeTasks.isEmpty {
+                        Button("Clear") { appState.activeTasks.removeAll() }
+                            .buttonStyle(.borderless)
+                            .font(.caption)
+                    }
+                }
                 if !appState.activeTasks.isEmpty {
-                    let total  = Double(appState.activeTasks.count)
-                    let done   = Double(doneCount)
-                    ProgressView(value: done, total: total)
-                        .tint(.blue)
+                    let total = Double(appState.activeTasks.count)
+                    let done  = Double(doneCount)
+                    ProgressView(value: done, total: total).tint(.blue)
                     Text("\(doneCount) of \(appState.activeTasks.count) files complete")
                         .font(.caption).foregroundStyle(.secondary)
                 }
@@ -131,11 +141,14 @@ struct DashboardView: View {
     private var emptyState: some View {
         VStack(spacing: 14) {
             Spacer()
-            Image(systemName: "server.rack").font(.system(size: 48)).foregroundStyle(.secondary)
-            Text("No HyperDecks Configured").font(.title3).bold()
-            Text("Add your devices in the HyperDecks tab.").foregroundStyle(.secondary)
+            Image(systemName: "network").font(.system(size: 48)).foregroundStyle(.secondary)
+            Text("No Devices Configured").font(.title3).bold()
+            Text("Add HyperDecks, ATEM Switchers, or Cloud Stores in the Devices tab.")
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
             Spacer()
         }
+        .padding()
     }
 
     // MARK: - Action bar
@@ -182,7 +195,7 @@ struct DashboardView: View {
                         .padding(.horizontal, 28).padding(.vertical, 8)
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(appState.hyperDecks.isEmpty)
+                .disabled(!hasDecks)
             }
 
             Spacer()

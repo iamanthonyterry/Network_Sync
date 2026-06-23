@@ -10,6 +10,12 @@ class AppState: ObservableObject {
     @Published var hyperDecks: [HyperDeck] = [] {
         didSet { save(hyperDecks, key: "hyperDecks") }
     }
+    @Published var switchers: [BlackmagicSwitcher] = [] {
+        didSet { save(switchers, key: "switchers") }
+    }
+    @Published var cloudStores: [CloudStore] = [] {
+        didSet { save(cloudStores, key: "cloudStores") }
+    }
     @Published var syncLocation: SyncLocation = SyncLocation() {
         didSet { save(syncLocation, key: "syncLocation") }
     }
@@ -39,14 +45,16 @@ class AppState: ObservableObject {
     var currentRunStart: Date = Date()
 
     init() {
-        hyperDecks         = load([HyperDeck].self,        key: "hyperDecks")         ?? []
-        syncLocation       = load(SyncLocation.self,       key: "syncLocation")       ?? SyncLocation()
+        hyperDecks         = load([HyperDeck].self,          key: "hyperDecks")         ?? []
+        switchers          = load([BlackmagicSwitcher].self, key: "switchers")          ?? []
+        cloudStores        = load([CloudStore].self,         key: "cloudStores")        ?? []
+        syncLocation       = load(SyncLocation.self,         key: "syncLocation")       ?? SyncLocation()
         conversionSettings = load(ConversionSettings.self, key: "conversionSettings") ?? ConversionSettings()
         scheduleSettings   = load(ScheduleSettings.self,   key: "scheduleSettings")   ?? ScheduleSettings()
         runHistory         = load([PipelineRun].self,      key: "runHistory")         ?? []
     }
 
-    // MARK: - Deck CRUD
+    // MARK: - HyperDeck CRUD
     func addDeck(_ deck: HyperDeck) {
         var d = deck; d.sortOrder = hyperDecks.count
         hyperDecks.append(d)
@@ -59,6 +67,36 @@ class AppState: ObservableObject {
     func moveDeck(from: IndexSet, to: Int) {
         hyperDecks.move(fromOffsets: from, toOffset: to)
         for i in hyperDecks.indices { hyperDecks[i].sortOrder = i }
+    }
+
+    // MARK: - Switcher CRUD
+    func addSwitcher(_ switcher: BlackmagicSwitcher) {
+        var s = switcher; s.sortOrder = switchers.count
+        switchers.append(s)
+    }
+    func updateSwitcher(_ switcher: BlackmagicSwitcher) {
+        guard let i = switchers.firstIndex(where: { $0.id == switcher.id }) else { return }
+        switchers[i] = switcher
+    }
+    func deleteSwitcher(id: UUID) { switchers.removeAll { $0.id == id } }
+    func moveSwitcher(from: IndexSet, to: Int) {
+        switchers.move(fromOffsets: from, toOffset: to)
+        for i in switchers.indices { switchers[i].sortOrder = i }
+    }
+
+    // MARK: - Cloud Store CRUD
+    func addCloudStore(_ store: CloudStore) {
+        var s = store; s.sortOrder = cloudStores.count
+        cloudStores.append(s)
+    }
+    func updateCloudStore(_ store: CloudStore) {
+        guard let i = cloudStores.firstIndex(where: { $0.id == store.id }) else { return }
+        cloudStores[i] = store
+    }
+    func deleteCloudStore(id: UUID) { cloudStores.removeAll { $0.id == id } }
+    func moveCloudStore(from: IndexSet, to: Int) {
+        cloudStores.move(fromOffsets: from, toOffset: to)
+        for i in cloudStores.indices { cloudStores[i].sortOrder = i }
     }
 
     // MARK: - Run lifecycle

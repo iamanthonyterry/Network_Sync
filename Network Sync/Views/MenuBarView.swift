@@ -35,7 +35,7 @@ struct MenuBarView: View {
             } label: {
                 Label("Start Sync & Transcode", systemImage: "play.fill")
             }
-            .disabled(appState.hyperDecks.isEmpty)
+            .disabled(appState.hyperDecks.isEmpty && appState.switchers.isEmpty && appState.cloudStores.isEmpty)
         }
 
         Divider()

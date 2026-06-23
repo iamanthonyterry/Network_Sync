@@ -6,7 +6,7 @@ struct ContentView: View {
 
     enum NavItem: String, Hashable, CaseIterable {
         case dashboard = "Dashboard"
-        case devices   = "HyperDecks"
+        case devices   = "Devices"
         case storage   = "Storage"
         case history   = "History"
         case settings  = "Settings"
@@ -14,7 +14,7 @@ struct ContentView: View {
         var icon: String {
             switch self {
             case .dashboard: return "play.tv"
-            case .devices:   return "server.rack"
+            case .devices:   return "network"
             case .storage:   return "externaldrive"
             case .history:   return "clock.arrow.circlepath"
             case .settings:  return "gearshape"
@@ -28,7 +28,7 @@ struct ContentView: View {
                 Label(item.rawValue, systemImage: item.icon)
             }
             .listStyle(.sidebar)
-            .navigationTitle("Network Sync")
+            .navigationTitle("Church Sync")
 
             // Schedule status badge at bottom of sidebar
             if appState.scheduleSettings.isEnabled {

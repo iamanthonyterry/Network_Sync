@@ -26,7 +26,7 @@ struct Network_SyncApp: App {
                     Task { await PipelineEngine.shared.runAll() }
                 }
                 .keyboardShortcut("r", modifiers: [.command, .shift])
-                .disabled(appState.isRunning || appState.hyperDecks.isEmpty)
+                .disabled(appState.isRunning || (appState.hyperDecks.count + appState.switchers.count + appState.cloudStores.count == 0))
 
                 if appState.isRunning {
                     Button("Stop Pipeline") {

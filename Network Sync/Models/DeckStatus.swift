@@ -6,11 +6,33 @@ enum DeckStatus: String, Codable {
 }
 
 // MARK: - HyperDeck
-struct HyperDeck: Identifiable, Codable {
+struct HyperDeck: Identifiable, Codable, Hashable {
     var id = UUID()
     var name: String
     var ipAddress: String
     var remotePath: String
+    var username: String = ""
+    var password: String = ""
+    var sortOrder: Int = 0
+}
+
+// MARK: - Blackmagic Switcher (ATEM)
+struct BlackmagicSwitcher: Identifiable, Codable, Hashable {
+    var id = UUID()
+    var name: String
+    var ipAddress: String
+    var model: String = ""
+    var sortOrder: Int = 0
+
+    static let controlPort: UInt16 = 9910
+}
+
+// MARK: - Blackmagic Cloud Store
+struct CloudStore: Identifiable, Codable, Hashable {
+    var id = UUID()
+    var name: String
+    var ipAddress: String
+    var volumeName: String = ""
     var username: String = ""
     var password: String = ""
     var sortOrder: Int = 0
@@ -24,7 +46,17 @@ struct SyncLocation: Codable {
     var password: String = ""
     var basePath: String = "ISO Records"
 
-    var mountPath: String { "/Volumes/\(volumeName)" }
+    /// Resolved at runtime by SMBService after mounting — NOT persisted.
+    /// macOS may mount the share under a different name than `volumeName`
+    /// (e.g. "LP-Service-Backup" → "LP Service Backup"). This holds the real path.
+    var resolvedMountPath: String? = nil
+
+    enum CodingKeys: String, CodingKey {
+        case ipAddress, volumeName, username, password, basePath
+    }
+
+    /// Actual /Volumes path — uses resolved path when available.
+    var mountPath: String { resolvedMountPath ?? "/Volumes/\(volumeName)" }
     var recordsPath: String { "\(mountPath)/\(basePath)" }
 }
 
@@ -103,7 +135,7 @@ struct PipelineRun: Identifiable, Codable, Hashable {
 // MARK: - Schedule Settings
 struct ScheduleSettings: Codable {
     var isEnabled: Bool = false
-    var hour: Int = 2       // 2 AM default
+    var hour: Int = 2
     var minute: Int = 0
     var repeatDaily: Bool = true
 

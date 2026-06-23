@@ -1,6 +1,32 @@
 import SwiftUI
 import Network
 
+// MARK: - Shared ping helper (package-internal)
+func resolveConnectionStatus(_ conn: NWConnection) async -> DeckStatus {
+    await withCheckedContinuation { continuation in
+        final class ResolveState: @unchecked Sendable { var resolved = false }
+        let state = ResolveState()
+
+        conn.stateUpdateHandler = { connectionState in
+            guard !state.resolved else { return }
+            switch connectionState {
+            case .ready:
+                state.resolved = true; conn.cancel()
+                continuation.resume(returning: .online)
+            case .failed:
+                state.resolved = true; conn.cancel()
+                continuation.resume(returning: .offline)
+            default: break
+            }
+        }
+        DispatchQueue.global().asyncAfter(deadline: .now() + 3) {
+            guard !state.resolved else { return }
+            state.resolved = true; conn.cancel()
+            continuation.resume(returning: .offline)
+        }
+    }
+}
+
 struct DeckCardView: View {
     let deck: HyperDeck
     @EnvironmentObject var appState: AppState
@@ -84,8 +110,7 @@ struct DeckCardView: View {
             // Actions
             HStack {
                 Button {
-                    checkPing()
-                    fetchFiles()
+                    Task { await checkPing(); await fetchFiles() }
                 } label: {
                     Label("Refresh", systemImage: "arrow.clockwise")
                 }.buttonStyle(.borderless)
@@ -111,37 +136,24 @@ struct DeckCardView: View {
         .background(Color(NSColor.controlBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.primary.opacity(0.08), lineWidth: 1))
-        .onAppear { checkPing(); fetchFiles() }
+        .task { await checkPing(); await fetchFiles() }
     }
 
     // MARK: - Ping
-    private func checkPing() {
+    private func checkPing() async {
         pingStatus = .unknown
-        let conn = NWConnection(host: NWEndpoint.Host(deck.ipAddress), port: 21, using: .tcp)
-        conn.stateUpdateHandler = { state in
-            DispatchQueue.main.async {
-                switch state {
-                case .ready:  pingStatus = .online;  conn.cancel()
-                case .failed: pingStatus = .offline; conn.cancel()
-                default: break
-                }
-            }
-        }
+        guard let port = NWEndpoint.Port(rawValue: UInt16(21)) else { return }
+        let conn = NWConnection(host: NWEndpoint.Host(deck.ipAddress), port: port, using: .tcp)
         conn.start(queue: .global())
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-            if pingStatus == .unknown { pingStatus = .offline }
-        }
+        pingStatus = await resolveConnectionStatus(conn)
     }
 
     // MARK: - FTP file list
-    private func fetchFiles() {
-        guard pingStatus != .offline else { return }
+    private func fetchFiles() async {
+        guard pingStatus == .online else { isFetchingFiles = false; return }
         isFetchingFiles = true
-        Task {
-            let result = await FTPService.listMovFiles(on: deck)
-            files = result
-            isFetchingFiles = false
-        }
+        files = await FTPService.listMovFiles(on: deck)
+        isFetchingFiles = false
     }
 
     // MARK: - Helpers

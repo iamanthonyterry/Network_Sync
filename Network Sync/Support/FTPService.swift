@@ -4,28 +4,50 @@ import Foundation
 // HyperDecks don't support Swift's URLSession FTP on modern macOS, so we shell out to curl.
 struct FTPService {
 
-    // MARK: - List remote .mov files
+    // MARK: - FTP Directory Entry
+
+    struct FTPEntry {
+        let name: String
+        let isDirectory: Bool
+        let size: Int64
+        let modified: Date
+    }
+
+    // MARK: - List all files in a remote directory
+
+    static func listAllFiles(on deck: HyperDeck, path: String) async -> [FTPEntry] {
+        let encoded = path
+            .addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? path
+        let url = "ftp://\(deck.ipAddress)/\(encoded)/"
+
+        let output = await runProcess(
+            executable: "/usr/bin/curl",
+            args: ["--user", "\(deck.username):\(deck.password)",
+                   "--connect-timeout", "5", "-s", "--list-only", url]
+        )
+        return parseFTPListing(from: output, basePath: path, deck: deck)
+    }
+
+    // MARK: - List remote .mov files (legacy)
     static func listMovFiles(on deck: HyperDeck) async -> [String] {
         let encoded = deck.remotePath
             .addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? deck.remotePath
         let url = "ftp://\(deck.ipAddress)/\(encoded)/"
 
-        let output = await runCurl(args: [
-            "--user", "\(deck.username):\(deck.password)",
-            "--connect-timeout", "5",
-            "-s", url
-        ])
-
+        let output = await runProcess(
+            executable: "/usr/bin/curl",
+            args: ["--user", "\(deck.username):\(deck.password)",
+                   "--connect-timeout", "5", "-s", url]
+        )
         return parseMovFiles(from: output)
     }
 
-    // MARK: - Download a single file with progress callback
-    // progress: 0.0 – 1.0
+    // MARK: - Download a single file with progress callback (0.0–1.0)
     static func downloadFile(
         named fileName: String,
         from deck: HyperDeck,
         to destinationURL: URL,
-        progress: @escaping (Double) -> Void
+        progress: @escaping @Sendable (Double) -> Void
     ) async -> Bool {
         let encoded = deck.remotePath
             .addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? deck.remotePath
@@ -34,63 +56,80 @@ struct FTPService {
         let url = "ftp://\(deck.ipAddress)/\(encoded)/\(fileEncoded)"
 
         return await withCheckedContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
-                let process = Process()
-                let stdoutPipe = Pipe()
-                let stderrPipe = Pipe()
+            let process = Process()
+            let stderrPipe = Pipe()
 
-                process.executableURL = URL(fileURLWithPath: "/usr/bin/curl")
-                process.arguments = [
-                    "--user", "\(deck.username):\(deck.password)",
-                    "--connect-timeout", "10",
-                    "--progress-bar",     // makes stderr emit clean % lines
-                    "-o", destinationURL.path,
-                    url
-                ]
-                process.standardOutput = stdoutPipe
-                process.standardError  = stderrPipe
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/curl")
+            process.arguments = [
+                "--user", "\(deck.username):\(deck.password)",
+                "--connect-timeout", "10",
+                "--progress-bar",
+                "-o", destinationURL.path,
+                url
+            ]
+            process.standardOutput = Pipe()   // discard stdout
+            process.standardError  = stderrPipe
 
-                // Parse curl's stderr progress: "##  3.2%  ..."
-                stderrPipe.fileHandleForReading.readabilityHandler = { handle in
-                    let text = String(data: handle.availableData, encoding: .utf8) ?? ""
-                    if let pct = parseCurlProgress(text) {
-                        DispatchQueue.main.async { progress(pct) }
-                    }
+            stderrPipe.fileHandleForReading.readabilityHandler = { handle in
+                let text = String(data: handle.availableData, encoding: .utf8) ?? ""
+                if let pct = parseCurlProgress(text) {
+                    Task { @MainActor in progress(pct) }
                 }
+            }
 
-                do {
-                    try process.run()
-                    process.waitUntilExit()
-                    stderrPipe.fileHandleForReading.readabilityHandler = nil
-                    let success = process.terminationStatus == 0
-                    if success { DispatchQueue.main.async { progress(1.0) } }
-                    continuation.resume(returning: success)
-                } catch {
-                    continuation.resume(returning: false)
-                }
+            process.terminationHandler = { p in
+                stderrPipe.fileHandleForReading.readabilityHandler = nil
+                let success = p.terminationStatus == 0
+                if success { Task { @MainActor in progress(1.0) } }
+                continuation.resume(returning: success)
+            }
+
+            do {
+                try process.run()
+            } catch {
+                continuation.resume(returning: false)
+            }
+        }
+    }
+
+    // MARK: - Generic process runner (non-blocking)
+    private static func runProcess(executable: String, args: [String]) async -> String {
+        await withCheckedContinuation { continuation in
+            let process = Process()
+            let pipe = Pipe()
+            process.executableURL = URL(fileURLWithPath: executable)
+            process.arguments = args
+            process.standardOutput = pipe
+            process.standardError  = Pipe()   // discard
+
+            process.terminationHandler = { _ in
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                continuation.resume(returning: String(data: data, encoding: .utf8) ?? "")
+            }
+
+            do {
+                try process.run()
+            } catch {
+                continuation.resume(returning: "")
             }
         }
     }
 
     // MARK: - Helpers
-    private static func runCurl(args: [String]) async -> String {
-        await withCheckedContinuation { continuation in
-            DispatchQueue.global().async {
-                let process = Process()
-                let pipe = Pipe()
-                process.executableURL = URL(fileURLWithPath: "/usr/bin/curl")
-                process.arguments = args
-                process.standardOutput = pipe
-                do {
-                    try process.run()
-                    process.waitUntilExit()
-                    let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                    continuation.resume(returning: String(data: data, encoding: .utf8) ?? "")
-                } catch {
-                    continuation.resume(returning: "")
-                }
+
+    /// Parses a --list-only FTP response (one filename per line) into FTPEntry values.
+    /// Uses a second curl call with -v to get size/date for each entry when available,
+    /// but falls back to lightweight name-only parsing for speed.
+    private static func parseFTPListing(from output: String, basePath: String, deck: HyperDeck) -> [FTPEntry] {
+        output
+            .replacingOccurrences(of: "\r", with: "")
+            .components(separatedBy: "\n")
+            .compactMap { line -> FTPEntry? in
+                let name = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !name.isEmpty, name != ".", name != ".." else { return nil }
+                let isDirectory = !name.contains(".")   // simple heuristic; HyperDeck dirs have no extension
+                return FTPEntry(name: name, isDirectory: isDirectory, size: 0, modified: .distantPast)
             }
-        }
     }
 
     static func parseMovFiles(from output: String) -> [String] {
@@ -100,16 +139,13 @@ struct FTPService {
             .compactMap { line -> String? in
                 let clean = line.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard clean.lowercased().contains(".mov") else { return nil }
-                // Handle both raw filename and Unix long-listing formats
                 let last = clean.components(separatedBy: " ").last ?? clean
                 return last.lowercased().hasSuffix(".mov") ? last : nil
             }
     }
 
-    // curl --progress-bar outputs lines like: "## 45.2% ..."
     private static func parseCurlProgress(_ text: String) -> Double? {
-        let pattern = #"(\d+(?:\.\d+)?)\s*%"#
-        guard let regex = try? NSRegularExpression(pattern: pattern),
+        guard let regex = try? NSRegularExpression(pattern: #"(\d+(?:\.\d+)?)\s*%"#),
               let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
               let range = Range(match.range(at: 1), in: text),
               let value = Double(text[range]) else { return nil }

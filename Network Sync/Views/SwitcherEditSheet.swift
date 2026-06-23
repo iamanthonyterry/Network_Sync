@@ -1,26 +1,22 @@
 import SwiftUI
 import Network
 
-struct DeckEditSheet: View {
+struct SwitcherEditSheet: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.dismiss) private var dismiss
-    let existingDeck: HyperDeck?
+    let existingSwitcher: BlackmagicSwitcher?
 
-    @State private var name       = ""
-    @State private var ipAddress  = ""
-    @State private var remotePath = ""
-    @State private var username   = ""
-    @State private var password   = ""
+    @State private var name      = ""
+    @State private var ipAddress = ""
+    @State private var model     = ""
     @State private var pingStatus: DeckStatus = .unknown
-    @State private var isTesting  = false
+    @State private var isTesting = false
 
-    init(deck: HyperDeck?) {
-        existingDeck = deck
-        _name       = State(initialValue: deck?.name       ?? "")
-        _ipAddress  = State(initialValue: deck?.ipAddress  ?? "")
-        _remotePath = State(initialValue: deck?.remotePath ?? "")
-        _username   = State(initialValue: deck?.username   ?? "")
-        _password   = State(initialValue: deck?.password   ?? "")
+    init(switcher: BlackmagicSwitcher?) {
+        existingSwitcher = switcher
+        _name      = State(initialValue: switcher?.name      ?? "")
+        _ipAddress = State(initialValue: switcher?.ipAddress ?? "")
+        _model     = State(initialValue: switcher?.model     ?? "")
     }
 
     var canSave: Bool { !name.isEmpty && !ipAddress.isEmpty }
@@ -28,11 +24,11 @@ struct DeckEditSheet: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text(existingDeck == nil ? "Add HyperDeck" : "Edit HyperDeck")
+                Text(existingSwitcher == nil ? "Add ATEM Switcher" : "Edit ATEM Switcher")
                     .font(.title2).bold()
                 Spacer()
                 Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
-                Button(existingDeck == nil ? "Add" : "Save") { save() }
+                Button(existingSwitcher == nil ? "Add" : "Save") { save() }
                     .buttonStyle(.borderedProminent).disabled(!canSave)
                     .keyboardShortcut(.defaultAction)
             }
@@ -42,21 +38,13 @@ struct DeckEditSheet: View {
             Form {
                 Section("Device Info") {
                     LabeledContent("Name") {
-                        TextField("e.g. ISO 1", text: $name).textFieldStyle(.roundedBorder)
+                        TextField("e.g. Main ATEM", text: $name).textFieldStyle(.roundedBorder)
                     }
                     LabeledContent("IP Address") {
                         TextField("192.168.x.x", text: $ipAddress).textFieldStyle(.roundedBorder)
                     }
-                    LabeledContent("Remote Path") {
-                        TextField("usb/DriveName", text: $remotePath).textFieldStyle(.roundedBorder)
-                    }
-                }
-                Section("Credentials") {
-                    LabeledContent("Username") {
-                        TextField("Username", text: $username).textFieldStyle(.roundedBorder)
-                    }
-                    LabeledContent("Password") {
-                        SecureField("Password", text: $password).textFieldStyle(.roundedBorder)
+                    LabeledContent("Model") {
+                        TextField("e.g. ATEM Mini Pro", text: $model).textFieldStyle(.roundedBorder)
                     }
                 }
                 Section {
@@ -64,7 +52,7 @@ struct DeckEditSheet: View {
                         Button(action: testConnection) {
                             if isTesting {
                                 ProgressView().controlSize(.small)
-                                Text("Testing...")
+                                Text("Testing…")
                             } else {
                                 Label("Test Connection", systemImage: "network")
                             }
@@ -74,8 +62,9 @@ struct DeckEditSheet: View {
                             Label(
                                 pingStatus == .online ? "Connected" : "No Response",
                                 systemImage: pingStatus == .online ? "checkmark.circle.fill" : "xmark.circle.fill"
-                            ).foregroundStyle(pingStatus == .online ? .green : .red)
-                             .font(.subheadline)
+                            )
+                            .foregroundStyle(pingStatus == .online ? .green : .red)
+                            .font(.subheadline)
                         }
                     }
                 }
@@ -86,13 +75,11 @@ struct DeckEditSheet: View {
     }
 
     private func save() {
-        if var d = existingDeck {
-            d.name = name; d.ipAddress = ipAddress
-            d.remotePath = remotePath; d.username = username; d.password = password
-            appState.updateDeck(d)
+        if var s = existingSwitcher {
+            s.name = name; s.ipAddress = ipAddress; s.model = model
+            appState.updateSwitcher(s)
         } else {
-            appState.addDeck(HyperDeck(name: name, ipAddress: ipAddress,
-                                       remotePath: remotePath, username: username, password: password))
+            appState.addSwitcher(BlackmagicSwitcher(name: name, ipAddress: ipAddress, model: model))
         }
         dismiss()
     }
@@ -100,7 +87,7 @@ struct DeckEditSheet: View {
     private func testConnection() {
         isTesting = true; pingStatus = .unknown
         Task {
-            guard let port = NWEndpoint.Port(rawValue: UInt16(21)) else {
+            guard let port = NWEndpoint.Port(rawValue: BlackmagicSwitcher.controlPort) else {
                 isTesting = false; return
             }
             let conn = NWConnection(host: NWEndpoint.Host(ipAddress), port: port, using: .tcp)
