@@ -105,7 +105,7 @@ final class HyperDeckService: ObservableObject {
         )
 
         return await withCheckedContinuation { continuation in
-            var resumed = false
+            nonisolated(unsafe) var resumed = false
 
             connection.stateUpdateHandler = { [weak self] state in
                 guard let self else { return }

@@ -14,6 +14,11 @@ struct HyperDeck: Identifiable, Codable, Hashable {
     var username: String = ""
     var password: String = ""
     var sortOrder: Int = 0
+
+    /// Which cloud store this deck syncs to. nil = use the global sync destination.
+    var cloudStoreID: UUID? = nil
+    /// Subfolder within the cloud store volume. Empty = volume root.
+    var cloudStorePath: String = ""
 }
 
 // MARK: - Blackmagic Switcher (ATEM)
@@ -47,15 +52,12 @@ struct SyncLocation: Codable {
     var basePath: String = "ISO Records"
 
     /// Resolved at runtime by SMBService after mounting — NOT persisted.
-    /// macOS may mount the share under a different name than `volumeName`
-    /// (e.g. "LP-Service-Backup" → "LP Service Backup"). This holds the real path.
     var resolvedMountPath: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case ipAddress, volumeName, username, password, basePath
     }
 
-    /// Actual /Volumes path — uses resolved path when available.
     var mountPath: String { resolvedMountPath ?? "/Volumes/\(volumeName)" }
     var recordsPath: String { "\(mountPath)/\(basePath)" }
 }

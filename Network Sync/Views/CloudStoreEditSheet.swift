@@ -124,11 +124,11 @@ struct CloudStoreEditSheet: View {
             }
 
             // 2. Attempt SMB mount
-            let mounted = await SMBService.mount(
+            let mountPath = await SMBService.mountAndResolve(
                 ip: ipAddress, volume: volumeName,
                 username: username, password: password
             )
-            mountResult = mounted ? "✅ Mounted at /Volumes/\(volumeName)" : "❌ Mount failed"
+            mountResult = mountPath.map { "✅ Mounted at \($0)" } ?? "❌ Mount failed"
             isTesting = false
         }
     }

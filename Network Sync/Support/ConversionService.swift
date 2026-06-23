@@ -89,7 +89,7 @@ struct ConversionService {
     }
 
     // MARK: - Parse "time=HH:MM:SS.ss" from ffmpeg stderr
-    static func parseFFmpegTime(_ text: String) -> Double? {
+    nonisolated static func parseFFmpegTime(_ text: String) -> Double? {
         let pattern = #"time=(\d{2}):(\d{2}):(\d{2})\.(\d{2})"#
         guard let regex = try? NSRegularExpression(pattern: pattern),
               let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) else { return nil }
