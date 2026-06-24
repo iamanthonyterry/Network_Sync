@@ -222,7 +222,7 @@ struct FolderPickerSheet: View {
         items = []
         highlighted = nil
         let loaded = await Task.detached(priority: .userInitiated) {
-            Self.listFolders(at: url)
+            await Self.listFolders(at: url)
         }.value
         items = loaded
         isLoading = false

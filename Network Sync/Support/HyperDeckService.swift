@@ -32,11 +32,17 @@ final class HyperDeckService: ObservableObject {
     // MARK: - Public Commands
 
     func record() async {
+        transport = .recording
         await send(command: "record\n")
+        await fetchTransport()
     }
 
     func stop() async {
+        transport = .stopped
+        await Task.yield()
         await send(command: "stop\n")
+        transport = .unknown
+        await fetchTransport()
     }
 
     /// Formats the active slot. This is destructive — caller should confirm first.
@@ -142,13 +148,15 @@ final class HyperDeckService: ObservableObject {
     // MARK: - Response Parsing
 
     private func parseTransport(from response: String) -> HyperDeckTransport {
+        print("[HyperDeckService] transport info response:\n\(response)")
         for line in response.lowercased().components(separatedBy: "\n") {
             if line.contains("status:") {
                 if line.contains("record")  { return .recording }
-                if line.contains("stopped") { return .stopped }
+                if line.contains("stopped") || line.contains("preview") { return .stopped }
                 if line.contains("play")    { return .playing }
             }
         }
         return .unknown
     }
 }
+

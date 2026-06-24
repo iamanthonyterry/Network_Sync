@@ -49,13 +49,17 @@ struct HistoryView: View {
             // Run detail
             if let run = selectedRun {
                 RunDetailView(run: run)
+                    .frame(minWidth: 400, maxWidth: .infinity)
             } else {
-                VStack {
-                    Spacer()
-                    Text("Select a run to view details")
-                        .foregroundStyle(.secondary)
-                    Spacer()
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
+                        Text("Select a run to view details")
+                            .foregroundStyle(.secondary)
+                            .font(.title3).bold()
+                    }
+                    .padding()
                 }
+                .frame(minWidth: 400, maxWidth: .infinity)
             }
         }
     }

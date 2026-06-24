@@ -3,9 +3,9 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject var appState: AppState
     @StateObject private var scheduler = SchedulerService.shared
+    @StateObject private var installer = ToolInstaller.shared
     @State private var mountResult: String?
     @State private var testingMount = false
-    @State private var ffmpegFound: Bool? = nil
     @State private var selectedStoreID: UUID? = nil   // nil = Custom
 
     var body: some View {
@@ -84,7 +84,7 @@ struct SettingsView: View {
                     }.disabled(testingMount)
                     if let r = mountResult {
                         Text(r).font(.caption)
-                            .foregroundStyle(r.hasPrefix("✅") ? .green : .orange)
+                            .foregroundStyle(r.hasPrefix("✅") ? Color.green : Color.orange)
                     }
                 }
             }.formStyle(.columns)
@@ -192,29 +192,96 @@ struct SettingsView: View {
     private var systemSection: some View {
         GroupBox(label: Label("System", systemImage: "cpu")) {
             VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Text("ffmpeg").font(.subheadline)
+                HStack(spacing: 12) {
+                    // Status icon
+                    Group {
+                        switch installer.phase {
+                        case .done:
+                            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                        case .failed:
+                            Image(systemName: "xmark.circle.fill").foregroundStyle(.red)
+                        case .installing:
+                            ProgressView().controlSize(.small)
+                        case .idle:
+                            Image(systemName: installer.ffmpegReady
+                                  ? "checkmark.circle.fill"
+                                  : "exclamationmark.triangle.fill")
+                                .foregroundStyle(installer.ffmpegReady ? Color.green : Color.orange)
+                        }
+                    }
+
+                    // Label
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("ffmpeg").font(.subheadline)
+                        switch installer.phase {
+                        case .installing(let step):
+                            Text(step).font(.caption).foregroundStyle(.secondary)
+                        case .failed(let msg):
+                            Text(msg).font(.caption).foregroundStyle(.red)
+                        case .done:
+                            Text("Installed and ready").font(.caption).foregroundStyle(.secondary)
+                        case .idle:
+                            Text(installer.ffmpegReady ? "Installed and ready" : "Not installed")
+                                .font(.caption)
+                                .foregroundStyle(installer.ffmpegReady ? Color.secondary : Color.orange)
+                        }
+                    }
+
                     Spacer()
-                    if let found = ffmpegFound {
-                        Label(
-                            found ? "Found" : "Not found — install via Homebrew: brew install ffmpeg",
-                            systemImage: found ? "checkmark.circle.fill" : "xmark.circle.fill"
-                        )
-                        .foregroundStyle(found ? .green : .red)
-                        .font(.subheadline)
-                    } else {
-                        Button("Check") { checkFFmpeg() }
+
+                    // Action button
+                    if !installer.ffmpegReady, installer.phase == .idle {
+                        Button("Install Automatically") {
+                            installer.installIfNeeded()
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
                     }
                 }
-                if ffmpegFound == false {
-                    Text("Open Terminal and run: brew install ffmpeg")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
+
+                // Live log during install
+                if case .installing = installer.phase, !installer.log.isEmpty {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 2) {
+                            ForEach(installer.log.suffix(20), id: \.self) { line in
+                                Text(line)
+                                    .font(.system(.caption2, design: .monospaced))
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .frame(height: 100)
+                    .padding(6)
+                    .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
+                }
+
+                // Error log
+                if case .failed = installer.phase, !installer.log.isEmpty {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 2) {
+                            ForEach(installer.log.suffix(10), id: \.self) { line in
+                                Text(line)
+                                    .font(.system(.caption2, design: .monospaced))
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .frame(height: 80)
+                    .padding(6)
+                    .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
                 }
             }
             .padding(4)
-        }.padding(.horizontal)
+        }
+        .padding(.horizontal)
+        .onAppear {
+            // Auto-check on view appear; auto-install if missing
+            if !installer.ffmpegReady, installer.phase == .idle {
+                installer.installIfNeeded()
+            }
+        }
     }
 
     // MARK: - Helpers
@@ -230,10 +297,5 @@ struct SettingsView: View {
                     : "⚠️ Not mounted — will auto-mount on sync"
             }
         }
-    }
-
-    private func checkFFmpeg() {
-        let paths = ["/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg"]
-        ffmpegFound = paths.contains { FileManager.default.fileExists(atPath: $0) }
     }
 }

@@ -15,13 +15,15 @@ struct ConversionService {
             withIntermediateDirectories: true
         )
 
+        guard let ffmpeg = ffmpegURL() else { return false }
+
         let duration = await probeDuration(of: input)
 
         return await withCheckedContinuation { continuation in
             let process = Process()
             let stderrPipe = Pipe()
 
-            process.executableURL = ffmpegURL()
+            process.executableURL = ffmpeg
             process.arguments = [
                 "-i", input.path,
                 "-c:v", "libx264",
@@ -62,10 +64,11 @@ struct ConversionService {
 
     // MARK: - Probe total duration via ffprobe
     private static func probeDuration(of url: URL) async -> Double {
-        await withCheckedContinuation { continuation in
+        guard let ffprobe = ffprobeURL() else { return 0 }
+        return await withCheckedContinuation { continuation in
             let process = Process()
             let pipe = Pipe()
-            process.executableURL = ffprobeURL()
+            process.executableURL = ffprobe
             process.arguments = [
                 "-v", "quiet",
                 "-print_format", "compact=print_section=0:nokey=1:escape=csv",
@@ -100,18 +103,16 @@ struct ConversionService {
         return g(1) * 3600 + g(2) * 60 + g(3) + g(4) / 100
     }
 
-    // MARK: - ffmpeg / ffprobe paths (Homebrew ARM or Intel)
-    static func ffmpegURL() -> URL {
-        let paths = ["/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg"]
-        return paths.first { FileManager.default.fileExists(atPath: $0) }
+    // MARK: - ffmpeg / ffprobe paths — returns nil when not installed
+    static func ffmpegURL() -> URL? {
+        ["/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg"]
+            .first { FileManager.default.fileExists(atPath: $0) }
             .map { URL(fileURLWithPath: $0) }
-            ?? URL(fileURLWithPath: "/opt/homebrew/bin/ffmpeg")
     }
 
-    static func ffprobeURL() -> URL {
-        let paths = ["/opt/homebrew/bin/ffprobe", "/usr/local/bin/ffprobe"]
-        return paths.first { FileManager.default.fileExists(atPath: $0) }
+    static func ffprobeURL() -> URL? {
+        ["/opt/homebrew/bin/ffprobe", "/usr/local/bin/ffprobe"]
+            .first { FileManager.default.fileExists(atPath: $0) }
             .map { URL(fileURLWithPath: $0) }
-            ?? URL(fileURLWithPath: "/opt/homebrew/bin/ffprobe")
     }
 }

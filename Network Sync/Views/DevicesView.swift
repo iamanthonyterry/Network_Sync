@@ -231,26 +231,28 @@ struct HyperDeckControls: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            // Record
-            Button {
-                Task { await hyperDeck.record() }
-            } label: {
-                Label("Record", systemImage: "record.circle")
-                    .foregroundStyle(.red)
+            if hyperDeck.transport == .recording {
+                // Stop
+                Button {
+                    Task { await hyperDeck.stop() }
+                } label: {
+                    Label("Stop", systemImage: "stop.circle")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(hyperDeck.isBusy || hyperDeck.transport == .stopped)
+            } else {
+                // Record
+                Button {
+                    Task { await hyperDeck.record() }
+                } label: {
+                    Label("Record", systemImage: "record.circle")
+                        .foregroundStyle(.red)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(hyperDeck.isBusy || hyperDeck.transport == .recording)
             }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .disabled(hyperDeck.isBusy || hyperDeck.transport == .recording)
-
-            // Stop
-            Button {
-                Task { await hyperDeck.stop() }
-            } label: {
-                Label("Stop", systemImage: "stop.circle")
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .disabled(hyperDeck.isBusy || hyperDeck.transport == .stopped)
 
             Spacer()
 
@@ -398,3 +400,4 @@ struct DiscoveredDeviceRow: View {
         .padding(.vertical, 4)
     }
 }
+
