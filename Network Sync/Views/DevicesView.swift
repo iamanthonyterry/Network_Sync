@@ -229,30 +229,40 @@ struct HyperDeckControls: View {
     @ObservedObject var hyperDeck: HyperDeckService
     @Binding var showFormatConfirm: Bool
 
+    private var isRecording: Bool { hyperDeck.transport == .recording }
+
     var body: some View {
-        HStack(spacing: 8) {
-            if hyperDeck.transport == .recording {
-                // Stop
-                Button {
-                    Task { await hyperDeck.stop() }
-                } label: {
-                    Label("Stop", systemImage: "stop.circle")
+        HStack(spacing: 10) {
+
+            // Live recording indicator
+            if isRecording {
+                Circle()
+                    .fill(.red)
+                    .frame(width: 8, height: 8)
+                    .symbolEffect(.pulse)
+                Text("REC")
+                    .font(.caption).bold()
+                    .foregroundStyle(.red)
+            }
+
+            // Record / Stop — toggles based on actual drive state
+            Button {
+                Task {
+                    if isRecording { await hyperDeck.stop() }
+                    else { await hyperDeck.record() }
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .disabled(hyperDeck.isBusy || hyperDeck.transport == .stopped)
-            } else {
-                // Record
-                Button {
-                    Task { await hyperDeck.record() }
-                } label: {
+            } label: {
+                if isRecording {
+                    Label("Stop", systemImage: "stop.circle.fill")
+                } else {
                     Label("Record", systemImage: "record.circle")
                         .foregroundStyle(.red)
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .disabled(hyperDeck.isBusy || hyperDeck.transport == .recording)
             }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .disabled(hyperDeck.isBusy)
+            .animation(.easeInOut(duration: 0.2), value: isRecording)
 
             Spacer()
 
@@ -271,7 +281,8 @@ struct HyperDeckControls: View {
                 ProgressView().controlSize(.small)
             }
         }
-        .task { await hyperDeck.fetchTransport() }
+        .onAppear { hyperDeck.startPolling() }
+        .onDisappear { hyperDeck.stopPolling() }
     }
 }
 

@@ -24,24 +24,44 @@ final class HyperDeckService: ObservableObject {
 
     private let host: String
     private let port: UInt16 = 9993
+    private var pollTask: Task<Void, Never>?
 
     init(host: String) {
         self.host = host
     }
 
+    deinit {
+        pollTask?.cancel()
+    }
+
+    // MARK: - Polling
+
+    /// Starts polling the drive's transport state every 2 seconds so the UI
+    /// reacts instantly whether recording is started from the app or manually.
+    func startPolling() {
+        pollTask?.cancel()
+        pollTask = Task { [weak self] in
+            while !Task.isCancelled {
+                await self?.fetchTransport()
+                try? await Task.sleep(for: .seconds(2))
+            }
+        }
+    }
+
+    func stopPolling() {
+        pollTask?.cancel()
+        pollTask = nil
+    }
+
     // MARK: - Public Commands
 
     func record() async {
-        transport = .recording
         await send(command: "record\n")
         await fetchTransport()
     }
 
     func stop() async {
-        transport = .stopped
-        await Task.yield()
         await send(command: "stop\n")
-        transport = .unknown
         await fetchTransport()
     }
 
