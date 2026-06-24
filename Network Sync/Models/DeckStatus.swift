@@ -64,24 +64,34 @@ struct SyncLocation: Codable {
 
 // MARK: - Conversion Settings
 struct ConversionSettings: Codable {
-    var preset: FFmpegPreset = .ultrafast
-    var crf: Int = 23
-    var audioBitrate: String = "128k"
+    var preset: FFmpegPreset = .fast
     var deleteOriginalsAfterConvert: Bool = true
     var maxParallelConversions: Int = 2
     var retentionDays: Int = 30
 
+    // Legacy fields — kept for Codable compatibility with existing saved data
+    var crf: Int = 23
+    var audioBitrate: String = "128k"
+
     enum FFmpegPreset: String, Codable, CaseIterable {
-        case ultrafast, superfast, veryfast, faster, fast, medium
-        var displayName: String { rawValue.capitalized }
+        case ultrafast, superfast, veryfast, faster, fast, medium, slow, slower, veryslow
+        var displayName: String {
+            switch self {
+            case .ultrafast: return "Fast"
+            case .superfast: return "Fast+"
+            case .veryfast:  return "Balanced"
+            case .faster:    return "Balanced+"
+            case .fast:      return "Quality"
+            case .medium:    return "High Quality"
+            case .slow, .slower, .veryslow: return "Best Quality"
+            }
+        }
         var description: String {
             switch self {
-            case .ultrafast: return "Fastest encode, largest file"
-            case .superfast: return "Very fast, slightly smaller"
-            case .veryfast:  return "Good balance for bulk jobs"
-            case .faster:    return "Better compression"
-            case .fast:      return "Near-optimal quality"
-            case .medium:    return "Best compression, slowest"
+            case .ultrafast, .superfast: return "1080p export, fastest encode"
+            case .veryfast, .faster:     return "1080p export, good balance"
+            case .fast:                  return "Full-resolution, hardware-accelerated"
+            case .medium, .slow, .slower, .veryslow: return "Best quality, matches source resolution"
             }
         }
     }

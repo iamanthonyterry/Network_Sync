@@ -1,118 +1,90 @@
 import Foundation
+import AVFoundation
 
+/// Converts video files (MOV, MXF, etc.) to MP4 using Apple's built-in AVFoundation.
+/// No external tools or Homebrew required — uses hardware-accelerated encoding on-device.
 struct ConversionService {
 
-    // Convert a single MOV to MP4.
-    // progress: 0.0–1.0, derived from ffmpeg's time= output vs total duration.
+    // MARK: - Convert
+
+    /// Convert a video file to MP4 (H.264 + AAC).
+    /// - Parameters:
+    ///   - input: Source video URL
+    ///   - output: Destination .mp4 URL
+    ///   - settings: Quality/preset preferences
+    ///   - progress: Called on main actor with 0.0–1.0 as encoding progresses
+    /// - Returns: `true` on success
     static func convert(
         input: URL,
         output: URL,
         settings: ConversionSettings,
         progress: @escaping @Sendable (Double) -> Void
     ) async -> Bool {
+        // Create destination directory if needed
         try? FileManager.default.createDirectory(
             at: output.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
 
-        guard let ffmpeg = ffmpegURL() else { return false }
+        // Remove any existing file at the output path
+        try? FileManager.default.removeItem(at: output)
 
-        let duration = await probeDuration(of: input)
+        let asset = AVURLAsset(url: input)
 
-        return await withCheckedContinuation { continuation in
-            let process = Process()
-            let stderrPipe = Pipe()
+        // Verify the asset is readable
+        guard (try? await asset.load(.isReadable)) == true else { return false }
 
-            process.executableURL = ffmpeg
-            process.arguments = [
-                "-i", input.path,
-                "-c:v", "libx264",
-                "-preset", settings.preset.rawValue,
-                "-crf", "\(settings.crf)",
-                "-c:a", "aac",
-                "-b:a", settings.audioBitrate,
-                "-movflags", "+faststart",
-                "-threads", "0",
-                "-y",
-                output.path
-            ]
-            process.standardOutput = Pipe()   // discard
-            process.standardError  = stderrPipe
+        // Pick the right export preset based on ConversionSettings
+        let preset = exportPreset(for: settings)
 
-            stderrPipe.fileHandleForReading.readabilityHandler = { handle in
-                let text = String(data: handle.availableData, encoding: .utf8) ?? ""
-                if duration > 0, let elapsed = parseFFmpegTime(text) {
-                    let pct = min(elapsed / duration, 1.0)
-                    Task { @MainActor in progress(pct) }
-                }
-            }
+        guard let session = AVAssetExportSession(asset: asset, presetName: preset) else {
+            return false
+        }
 
-            process.terminationHandler = { p in
-                stderrPipe.fileHandleForReading.readabilityHandler = nil
-                let success = p.terminationStatus == 0
-                if success { Task { @MainActor in progress(1.0) } }
-                continuation.resume(returning: success)
-            }
+        session.outputURL = output
+        session.outputFileType = .mp4
+        session.shouldOptimizeForNetworkUse = true  // faststart equivalent
 
-            do {
-                try process.run()
-            } catch {
-                continuation.resume(returning: false)
+        // Poll progress on a background task
+        let progressTask = Task {
+            while !Task.isCancelled {
+                let pct = Double(session.progress)
+                await MainActor.run { progress(pct) }
+                if pct >= 1.0 { break }
+                try? await Task.sleep(for: .milliseconds(250))
             }
         }
-    }
 
-    // MARK: - Probe total duration via ffprobe
-    private static func probeDuration(of url: URL) async -> Double {
-        guard let ffprobe = ffprobeURL() else { return 0 }
-        return await withCheckedContinuation { continuation in
-            let process = Process()
-            let pipe = Pipe()
-            process.executableURL = ffprobe
-            process.arguments = [
-                "-v", "quiet",
-                "-print_format", "compact=print_section=0:nokey=1:escape=csv",
-                "-show_entries", "format=duration",
-                url.path
-            ]
-            process.standardOutput = pipe
-            process.standardError  = Pipe()
+        await session.export()
+        progressTask.cancel()
 
-            process.terminationHandler = { _ in
-                let out = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-                continuation.resume(returning: Double(out.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0)
-            }
-
-            do {
-                try process.run()
-            } catch {
-                continuation.resume(returning: 0)
-            }
+        let success = session.status == .completed
+        if success {
+            await MainActor.run { progress(1.0) }
         }
+        return success
     }
 
-    // MARK: - Parse "time=HH:MM:SS.ss" from ffmpeg stderr
-    nonisolated static func parseFFmpegTime(_ text: String) -> Double? {
-        let pattern = #"time=(\d{2}):(\d{2}):(\d{2})\.(\d{2})"#
-        guard let regex = try? NSRegularExpression(pattern: pattern),
-              let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) else { return nil }
-        func g(_ i: Int) -> Double {
-            guard let r = Range(match.range(at: i), in: text) else { return 0 }
-            return Double(text[r]) ?? 0
+    // MARK: - Supported Input Check
+
+    /// Returns true if AVFoundation can read this file type.
+    static func canConvert(url: URL) -> Bool {
+        let readable: Set<String> = ["mov", "mp4", "m4v", "mxf", "avi", "m2ts", "mts", "ts"]
+        return readable.contains(url.pathExtension.lowercased())
+    }
+
+    // MARK: - Export Preset Selection
+
+    private static func exportPreset(for settings: ConversionSettings) -> String {
+        // Map quality tiers to AVFoundation presets.
+        // These use hardware H.264 encoding automatically on Apple Silicon / Intel Macs.
+        switch settings.preset {
+        case .ultrafast, .superfast, .veryfast, .faster, .fast:
+            return AVAssetExportPreset1920x1080       // 1080p — fast, broadcast-safe
+        case .medium:
+            return AVAssetExportPresetHighestQuality  // matches source resolution
+        case .slow, .slower, .veryslow:
+            return AVAssetExportPresetHighestQuality
         }
-        return g(1) * 3600 + g(2) * 60 + g(3) + g(4) / 100
-    }
-
-    // MARK: - ffmpeg / ffprobe paths — returns nil when not installed
-    static func ffmpegURL() -> URL? {
-        ["/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg"]
-            .first { FileManager.default.fileExists(atPath: $0) }
-            .map { URL(fileURLWithPath: $0) }
-    }
-
-    static func ffprobeURL() -> URL? {
-        ["/opt/homebrew/bin/ffprobe", "/usr/local/bin/ffprobe"]
-            .first { FileManager.default.fileExists(atPath: $0) }
-            .map { URL(fileURLWithPath: $0) }
     }
 }
