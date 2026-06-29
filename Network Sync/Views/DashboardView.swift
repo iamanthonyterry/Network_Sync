@@ -19,14 +19,9 @@ struct DashboardView: View {
             if totalDevices == 0 {
                 emptyState
             } else {
-                HSplitView {
-                    deckGrid
-                    if !appState.activeTasks.isEmpty {
-                        taskPanel.frame(minWidth: 300, maxWidth: 380)
-                    }
-                }
+                deckGrid
             }
-
+            
             Divider()
             actionBar
         }

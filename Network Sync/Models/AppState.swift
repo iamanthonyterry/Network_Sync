@@ -28,6 +28,9 @@ class AppState: ObservableObject {
     @Published var runHistory: [PipelineRun] = [] {
         didSet { save(runHistory, key: "runHistory") }
     }
+    @Published var emailNotificationSettings: EmailNotificationSettings = EmailNotificationSettings() {
+        didSet { save(emailNotificationSettings, key: "emailNotificationSettings") }
+    }
 
     // MARK: - Live Pipeline State
     @Published var isRunning = false
@@ -51,7 +54,8 @@ class AppState: ObservableObject {
         syncLocation       = load(SyncLocation.self,         key: "syncLocation")       ?? SyncLocation()
         conversionSettings = load(ConversionSettings.self, key: "conversionSettings") ?? ConversionSettings()
         scheduleSettings   = load(ScheduleSettings.self,   key: "scheduleSettings")   ?? ScheduleSettings()
-        runHistory         = load([PipelineRun].self,      key: "runHistory")         ?? []
+        runHistory                 = load([PipelineRun].self,               key: "runHistory")                 ?? []
+        emailNotificationSettings  = load(EmailNotificationSettings.self,   key: "emailNotificationSettings")  ?? EmailNotificationSettings()
     }
 
     // MARK: - HyperDeck CRUD

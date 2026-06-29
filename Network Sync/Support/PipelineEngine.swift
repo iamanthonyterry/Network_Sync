@@ -282,6 +282,7 @@ class PipelineEngine: ObservableObject {
         appState.log("✅ Done — \(c) converted, \(e) errors")
         appState.commitRun()
         NotificationService.sendCompletion(converted: c, errors: e)
+        EmailNotificationService.sendSyncComplete(converted: c, errors: e)
     }
 
     // MARK: - SMB Mount — returns the actual /Volumes path
