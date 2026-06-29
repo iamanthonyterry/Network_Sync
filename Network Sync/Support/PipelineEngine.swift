@@ -89,10 +89,10 @@ class PipelineEngine: ObservableObject {
                 ) { [weak self] pct in self?.updateTask(id: task.id, syncProgress: pct) }
 
                 if ok {
-                    updateTask(id: task.id, phase: .converting, syncProgress: 1)
+                    Task { @MainActor in self.updateTask(id: task.id, phase: .converting, syncProgress: 1) }
                     toConvert.append(destURL)
                 } else {
-                    updateTask(id: task.id, phase: .error, errorMessage: "Retry failed")
+                    Task { @MainActor in self.updateTask(id: task.id, phase: .error, errorMessage: "Retry failed") }
                     appState.currentRunErrors += 1
                 }
             }

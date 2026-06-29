@@ -21,9 +21,9 @@ class DeviceDiscovery: ObservableObject {
         discoveredCloudStores.removeAll()
         isScanning = true
 
-        startBrowser(type: "_ftp._tcp",       handler: handleFTPResult)
-        startBrowser(type: "_blackmagic._tcp", handler: handleBlackmagicResult)
-        startBrowser(type: "_smb._tcp",        handler: handleSMBResult)
+        startBrowser(type: "_ftp._tcp",        handler: handleFTPResult)
+        startBrowser(type: "_blackmagic._tcp",  handler: handleBlackmagicResult)
+        startBrowser(type: "_smb._tcp",         handler: handleSMBResult)
     }
 
     func stopScanning() {
@@ -45,9 +45,13 @@ class DeviceDiscovery: ObservableObject {
             using: params
         )
 
-        browser.browseResultsChangedHandler = { results, _ in
-            for result in results {
-                Task { await handler(result) }
+        // Use the `changes` diff instead of the full result set so we only
+        // process genuinely new endpoints — avoids duplicate resolution tasks.
+        browser.browseResultsChangedHandler = { _, changes in
+            for change in changes {
+                if case let .added(result) = change {
+                    Task { await handler(result) }
+                }
             }
         }
         browser.start(queue: browserQueue)
@@ -92,11 +96,7 @@ class DeviceDiscovery: ObservableObject {
 
     private func resolveIP(for endpoint: NWEndpoint) async -> String? {
         await withCheckedContinuation { continuation in
-            // Use a class-based flag so Swift 6 concurrency can safely share it
-            // across the state handler and the timeout closure.
-            final class ResolveState: @unchecked Sendable {
-                var resolved = false
-            }
+            final class ResolveState: @unchecked Sendable { var resolved = false }
             let state = ResolveState()
             let conn = NWConnection(to: endpoint, using: .tcp)
 
@@ -126,7 +126,6 @@ class DeviceDiscovery: ObservableObject {
 
             conn.start(queue: browserQueue)
 
-            // Timeout after 5 s
             browserQueue.asyncAfter(deadline: .now() + 5) {
                 guard !state.resolved else { return }
                 state.resolved = true
@@ -140,10 +139,8 @@ class DeviceDiscovery: ObservableObject {
 // MARK: - NWEndpoint helper
 
 private extension NWEndpoint {
-    /// Extracts the Bonjour instance name before the first dot.
     var serviceName: String? {
         if case let .service(name, _, _, _) = self { return name }
-        // Fallback: parse from debugDescription
         let desc = debugDescription
         guard let dot = desc.firstIndex(of: ".") else { return nil }
         return String(desc[..<dot])

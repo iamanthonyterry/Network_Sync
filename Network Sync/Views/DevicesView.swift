@@ -1,9 +1,46 @@
 import SwiftUI
 import Network
+import Combine
+
+// MARK: - Status Cache
+// Holds ping results in a stable @StateObject so device rows never
+// flicker back to "Checking…" when the parent view re-renders.
+@MainActor
+final class DeviceStatusCache: ObservableObject {
+    @Published private var cache: [String: DeckStatus] = [:]
+
+    func status(for key: String) -> DeckStatus { cache[key] ?? .unknown }
+
+    func ping(host: String, port: UInt16) async {
+        // Skip if we already have a result — avoids redundant TCP probes.
+        if let existing = cache[host], existing != .unknown { return }
+        cache[host] = .unknown
+
+        guard let nwPort = NWEndpoint.Port(rawValue: port) else {
+            cache[host] = .offline; return
+        }
+        let conn = NWConnection(host: NWEndpoint.Host(host), port: nwPort, using: .tcp)
+        conn.start(queue: .global())
+        cache[host] = await resolveConnectionStatus(conn)
+    }
+
+    func refresh(host: String, port: UInt16) async {
+        cache[host] = .unknown
+        guard let nwPort = NWEndpoint.Port(rawValue: port) else {
+            cache[host] = .offline; return
+        }
+        let conn = NWConnection(host: NWEndpoint.Host(host), port: nwPort, using: .tcp)
+        conn.start(queue: .global())
+        cache[host] = await resolveConnectionStatus(conn)
+    }
+}
+
+// MARK: - DevicesView
 
 struct DevicesView: View {
     @EnvironmentObject var appState: AppState
     @StateObject private var discovery = DeviceDiscovery()
+    @StateObject private var statusCache = DeviceStatusCache()
 
     @State private var showingAddDeck = false
     @State private var showingAddSwitcher = false
@@ -55,6 +92,26 @@ struct DevicesView: View {
         .sheet(item: $editingDeck) { DeckEditSheet(deck: $0) }
         .sheet(item: $editingSwitcher) { SwitcherEditSheet(switcher: $0) }
         .sheet(item: $editingCloudStore) { CloudStoreEditSheet(store: $0) }
+        .task { await pingAllDevices() }
+        .onChange(of: appState.hyperDecks)  { Task { await pingAllDevices() } }
+        .onChange(of: appState.switchers)   { Task { await pingAllDevices() } }
+        .onChange(of: appState.cloudStores) { Task { await pingAllDevices() } }
+    }
+
+    // MARK: - Ping All
+
+    private func pingAllDevices() async {
+        async let _ = withTaskGroup(of: Void.self) { group in
+            for deck in appState.hyperDecks {
+                group.addTask { await statusCache.ping(host: deck.ipAddress, port: 9993) }
+            }
+            for switcher in appState.switchers {
+                group.addTask { await statusCache.ping(host: switcher.ipAddress, port: BlackmagicSwitcher.controlPort) }
+            }
+            for store in appState.cloudStores {
+                group.addTask { await statusCache.ping(host: store.ipAddress, port: 445) }
+            }
+        }
     }
 
     // MARK: - Subviews
@@ -77,10 +134,8 @@ struct DevicesView: View {
         if !appState.hyperDecks.isEmpty {
             Section("HyperDecks") {
                 ForEach(appState.hyperDecks) { deck in
-                    DeckRow(deck: deck)
-                        .contextMenu {
-                            Button("Edit…") { editingDeck = deck }
-                        }
+                    DeckRow(deck: deck, statusCache: statusCache)
+                        .contextMenu { Button("Edit…") { editingDeck = deck } }
                 }
                 .onMove { appState.moveDeck(from: $0, to: $1) }
                 .onDelete { offsets in
@@ -94,7 +149,7 @@ struct DevicesView: View {
         if !appState.switchers.isEmpty {
             Section("ATEM Switchers") {
                 ForEach(appState.switchers) { switcher in
-                    SwitcherRow(switcher: switcher)
+                    SwitcherRow(switcher: switcher, statusCache: statusCache)
                         .contentShape(Rectangle())
                         .onTapGesture { editingSwitcher = switcher }
                 }
@@ -110,7 +165,7 @@ struct DevicesView: View {
         if !appState.cloudStores.isEmpty {
             Section("Cloud Stores") {
                 ForEach(appState.cloudStores) { store in
-                    CloudStoreRow(store: store)
+                    CloudStoreRow(store: store, statusCache: statusCache)
                         .contentShape(Rectangle())
                         .onTapGesture { editingCloudStore = store }
                 }
@@ -173,14 +228,17 @@ struct DevicesView: View {
 
 struct DeckRow: View {
     let deck: HyperDeck
-    @State private var status: DeckStatus = .unknown
+    let statusCache: DeviceStatusCache
     @StateObject private var hyperDeck: HyperDeckService
     @State private var showFormatConfirm = false
 
-    init(deck: HyperDeck) {
+    init(deck: HyperDeck, statusCache: DeviceStatusCache) {
         self.deck = deck
+        self.statusCache = statusCache
         _hyperDeck = StateObject(wrappedValue: HyperDeckService(host: deck.ipAddress))
     }
+
+    private var status: DeckStatus { statusCache.status(for: deck.ipAddress) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -200,7 +258,6 @@ struct DeckRow: View {
             }
         }
         .padding(.vertical, 4)
-        .task { await ping(host: deck.ipAddress, port: 9993) }
         .confirmationDialog(
             "Format Drive?",
             isPresented: $showFormatConfirm,
@@ -213,13 +270,6 @@ struct DeckRow: View {
         } message: {
             Text("This will erase all media on \(deck.name). This cannot be undone.")
         }
-    }
-
-    private func ping(host: String, port: UInt16) async {
-        guard let port = NWEndpoint.Port(rawValue: port) else { return }
-        let conn = NWConnection(host: NWEndpoint.Host(host), port: port, using: .tcp)
-        conn.start(queue: .global())
-        status = await resolveConnectionStatus(conn)
     }
 }
 
@@ -234,7 +284,6 @@ struct HyperDeckControls: View {
     var body: some View {
         HStack(spacing: 10) {
 
-            // Live recording indicator
             if isRecording {
                 Circle()
                     .fill(.red)
@@ -245,7 +294,6 @@ struct HyperDeckControls: View {
                     .foregroundStyle(.red)
             }
 
-            // Record / Stop — toggles based on actual drive state
             Button {
                 Task {
                     if isRecording { await hyperDeck.stop() }
@@ -266,10 +314,7 @@ struct HyperDeckControls: View {
 
             Spacer()
 
-            // Format (destructive, separated)
-            Button {
-                showFormatConfirm = true
-            } label: {
+            Button { showFormatConfirm = true } label: {
                 Label("Format", systemImage: "exclamationmark.triangle")
                     .foregroundStyle(.orange)
             }
@@ -290,23 +335,15 @@ struct HyperDeckControls: View {
 
 struct SwitcherRow: View {
     let switcher: BlackmagicSwitcher
-    @State private var status: DeckStatus = .unknown
+    let statusCache: DeviceStatusCache
 
     var body: some View {
         DeviceRow(
             name: switcher.name,
             detail: "\(switcher.ipAddress)\(switcher.model.isEmpty ? "" : " · \(switcher.model)")",
             icon: "switch.2",
-            status: status
+            status: statusCache.status(for: switcher.ipAddress)
         )
-        .task { await ping() }
-    }
-
-    private func ping() async {
-        guard let port = NWEndpoint.Port(rawValue: BlackmagicSwitcher.controlPort) else { return }
-        let conn = NWConnection(host: NWEndpoint.Host(switcher.ipAddress), port: port, using: .tcp)
-        conn.start(queue: .global())
-        status = await resolveConnectionStatus(conn)
     }
 }
 
@@ -314,24 +351,15 @@ struct SwitcherRow: View {
 
 struct CloudStoreRow: View {
     let store: CloudStore
-    @State private var status: DeckStatus = .unknown
+    let statusCache: DeviceStatusCache
 
     var body: some View {
         DeviceRow(
             name: store.name,
             detail: "\(store.ipAddress)\(store.volumeName.isEmpty ? "" : " · \(store.volumeName)")",
             icon: "externaldrive.badge.wifi",
-            status: status
+            status: statusCache.status(for: store.ipAddress)
         )
-        .task { await ping() }
-    }
-
-    private func ping() async {
-        // Cloud Store serves via SMB port 445
-        guard let port = NWEndpoint.Port(rawValue: UInt16(445)) else { return }
-        let conn = NWConnection(host: NWEndpoint.Host(store.ipAddress), port: port, using: .tcp)
-        conn.start(queue: .global())
-        status = await resolveConnectionStatus(conn)
     }
 }
 
@@ -411,4 +439,3 @@ struct DiscoveredDeviceRow: View {
         .padding(.vertical, 4)
     }
 }
-
