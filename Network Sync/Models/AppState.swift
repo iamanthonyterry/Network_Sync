@@ -31,6 +31,9 @@ class AppState: ObservableObject {
     @Published var emailNotificationSettings: EmailNotificationSettings = EmailNotificationSettings() {
         didSet { save(emailNotificationSettings, key: "emailNotificationSettings") }
     }
+    @Published var formatDriveAfterSync: Bool = false {
+        didSet { UserDefaults.standard.set(formatDriveAfterSync, forKey: "formatDriveAfterSync") }
+    }
 
     // MARK: - Live Pipeline State
     @Published var isRunning = false
@@ -56,6 +59,7 @@ class AppState: ObservableObject {
         scheduleSettings   = load(ScheduleSettings.self,   key: "scheduleSettings")   ?? ScheduleSettings()
         runHistory                 = load([PipelineRun].self,               key: "runHistory")                 ?? []
         emailNotificationSettings  = load(EmailNotificationSettings.self,   key: "emailNotificationSettings")  ?? EmailNotificationSettings()
+        formatDriveAfterSync       = UserDefaults.standard.bool(forKey: "formatDriveAfterSync")
     }
 
     // MARK: - HyperDeck CRUD

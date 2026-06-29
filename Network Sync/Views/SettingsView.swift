@@ -6,7 +6,6 @@ struct SettingsView: View {
     @State private var mountResult: String?
     @State private var testingMount = false
     @State private var selectedStoreID: UUID? = nil   // nil = Custom
-    @State private var shouldFormatDrive: Bool = false
 
     var body: some View {
         ScrollView {
@@ -115,7 +114,7 @@ struct SettingsView: View {
 
     private var formatDriveSection: some View {
         GroupBox(label: Label("Post-Process Actions", systemImage: "externaldrive.badge.timemachine")) {
-            Toggle(isOn: $shouldFormatDrive) {
+            Toggle(isOn: $appState.formatDriveAfterSync) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Format drive after completion")
                         .font(.body)

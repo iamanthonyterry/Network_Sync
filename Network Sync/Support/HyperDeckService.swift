@@ -70,6 +70,16 @@ final class HyperDeckService: ObservableObject {
         await send(command: "format filesystem: \(filesystem)\n")
     }
 
+    /// Convenience: create a one-shot connection, format, and discard.
+    static func formatDrive(deck: HyperDeck, filesystem: String = "HFS+") async throws {
+        let service = await HyperDeckService(host: deck.ipAddress)
+        await service.formatDrive(filesystem: filesystem)
+        if let error = await service.lastError {
+            throw NSError(domain: "HyperDeckService", code: 1,
+                          userInfo: [NSLocalizedDescriptionKey: error])
+        }
+    }
+
     func fetchTransport() async {
         let response = await sendAndReceive(command: "transport info\n")
         transport = parseTransport(from: response)

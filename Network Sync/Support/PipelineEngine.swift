@@ -283,6 +283,29 @@ class PipelineEngine: ObservableObject {
         appState.commitRun()
         NotificationService.sendCompletion(converted: c, errors: e)
         EmailNotificationService.sendSyncComplete(converted: c, errors: e)
+
+        if appState.formatDriveAfterSync {
+            Task { await formatSyncedDecks() }
+        }
+    }
+
+    // MARK: - Format drives
+    private func formatSyncedDecks() async {
+        let decks = appState.hyperDecks.filter { appState.currentRunDecks.contains($0.name) }
+        guard !decks.isEmpty else { return }
+        appState.log("🗑 Formatting \(decks.count) deck(s) per post-process setting...")
+
+        for deck in decks {
+            appState.log("  ⏳ Formatting \(deck.name) (\(deck.ipAddress))...")
+            do {
+                try await HyperDeckService.formatDrive(deck: deck)
+                appState.log("  ✅ \(deck.name) formatted successfully")
+            } catch {
+                appState.log("  ❌ \(deck.name) format failed: \(error.localizedDescription)")
+            }
+        }
+
+        appState.log("🗑 Format complete")
     }
 
     // MARK: - SMB Mount — returns the actual /Volumes path
