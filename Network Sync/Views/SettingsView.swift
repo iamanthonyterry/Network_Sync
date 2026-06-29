@@ -42,9 +42,9 @@ struct SettingsView: View {
                         in: 1...8
                     )
                 }
-                LabeledContent("Delete Originals") {
-                    Toggle("", isOn: $appState.conversionSettings.deleteOriginalsAfterConvert)
-                        .labelsHidden()
+                LabeledContent("Originals") {
+                    Text("Deleted automatically after conversion")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
                 LabeledContent("Engine") {
                     Text("AVFoundation (built-in, hardware-accelerated)")

@@ -29,25 +29,31 @@ struct DashboardView: View {
 
     // MARK: - Header
     private var headerBar: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Sync Dashboard").font(.title2).bold()
-                Text("\(appState.hyperDecks.count) decks · \(appState.switchers.count) switchers · \(appState.cloudStores.count) cloud stores")
-                    .font(.subheadline).foregroundStyle(.secondary)
-            }
-            Spacer()
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Sync Dashboard").font(.title2).bold()
+                    Text("\(appState.hyperDecks.count) decks · \(appState.switchers.count) switchers · \(appState.cloudStores.count) cloud stores")
+                        .font(.subheadline).foregroundStyle(.secondary)
+                }
+                Spacer()
 
-            if appState.isRunning {
-                HStack(spacing: 10) {
-                    statPill("\(activeCount) active", color: .blue)
-                    statPill("\(doneCount) done", color: .green)
-                    if errorCount > 0 { statPill("\(errorCount) errors", color: .red) }
+                if appState.isRunning {
+                    HStack(spacing: 10) {
+                        statPill("\(activeCount) active", color: .blue)
+                        statPill("\(doneCount) done", color: .green)
+                        if errorCount > 0 { statPill("\(errorCount) errors", color: .red) }
+                    }
+                } else {
+                    HStack(spacing: 6) {
+                        Circle().fill(Color.gray.opacity(0.4)).frame(width: 9, height: 9)
+                        Text("Idle").font(.subheadline).foregroundStyle(.secondary)
+                    }
                 }
-            } else {
-                HStack(spacing: 6) {
-                    Circle().fill(Color.gray.opacity(0.4)).frame(width: 9, height: 9)
-                    Text("Idle").font(.subheadline).foregroundStyle(.secondary)
-                }
+            }
+
+            if let start = appState.runStartTime {
+                ElapsedTimeView(startTime: start)
             }
         }
         .padding()

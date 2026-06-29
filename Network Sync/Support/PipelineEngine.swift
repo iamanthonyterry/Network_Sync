@@ -131,8 +131,7 @@ class PipelineEngine: ObservableObject {
             let urls = enumerator.compactMap { $0 as? URL }
             var deleted = 0
             for url in urls {
-                guard url.pathExtension.lowercased() == "mp4" ||
-                      url.lastPathComponent.hasSuffix(".done") else { continue }
+                guard url.pathExtension.lowercased() == "mp4" else { continue }
                 if let mod = try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
                    mod < cutoff {
                     try? fm.removeItem(at: url)
@@ -169,13 +168,11 @@ class PipelineEngine: ObservableObject {
             guard appState.isRunning else { return }
 
             let destURL      = deckDestDir.appendingPathComponent(fileName)
-            let receiptURL   = deckDestDir.appendingPathComponent(fileName + ".done")
             let convertedURL = deckDestDir
                 .appendingPathComponent("Converted")
                 .appendingPathComponent((fileName as NSString).deletingPathExtension + ".mp4")
 
-            if FileManager.default.fileExists(atPath: convertedURL.path) ||
-               FileManager.default.fileExists(atPath: receiptURL.path) {
+            if FileManager.default.fileExists(atPath: convertedURL.path) {
                 appState.log("  ⏭ \(fileName) already processed")
                 appState.currentRunSkipped += 1
                 continue
@@ -233,8 +230,6 @@ class PipelineEngine: ObservableObject {
                         let outputURL = convertedDir.appendingPathComponent(
                             (fileName as NSString).deletingPathExtension + ".mp4"
                         )
-                        let receiptURL = inputURL.deletingLastPathComponent()
-                            .appendingPathComponent(fileName + ".done")
 
                         let taskID = await MainActor.run {
                             self.appState.activeTasks.first { $0.fileName == fileName }?.id
@@ -257,10 +252,9 @@ class PipelineEngine: ObservableObject {
                                 if let id = taskID { self.updateTask(id: id, phase: .done, convertProgress: 1) }
                                 self.appState.log("  ✅ Converted → \(outputURL.lastPathComponent)")
                                 self.appState.currentRunConverted += 1
-                                if self.appState.conversionSettings.deleteOriginalsAfterConvert {
-                                    try? FileManager.default.removeItem(at: inputURL)
-                                    FileManager.default.createFile(atPath: receiptURL.path, contents: nil)
-                                }
+                                // Always remove the original once conversion succeeds.
+                                // The converted MP4 in /Converted already proves completion.
+                                try? FileManager.default.removeItem(at: inputURL)
                             } else {
                                 if let id = taskID { self.updateTask(id: id, phase: .error, errorMessage: "Conversion failed") }
                                 self.appState.log("  ❌ Conversion failed: \(fileName)")

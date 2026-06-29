@@ -65,7 +65,6 @@ struct SyncLocation: Codable {
 // MARK: - Conversion Settings
 struct ConversionSettings: Codable {
     var preset: FFmpegPreset = .fast
-    var deleteOriginalsAfterConvert: Bool = true
     var maxParallelConversions: Int = 2
     var retentionDays: Int = 30
 

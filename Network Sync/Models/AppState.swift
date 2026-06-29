@@ -50,6 +50,9 @@ class AppState: ObservableObject {
     var currentRunDecks: [String] = []
     var currentRunStart: Date = Date()
 
+    // MARK: - Elapsed time (published so views can observe)
+    @Published var runStartTime: Date? = nil
+
     init() {
         hyperDecks         = load([HyperDeck].self,          key: "hyperDecks")         ?? []
         switchers          = load([BlackmagicSwitcher].self, key: "switchers")          ?? []
@@ -116,6 +119,7 @@ class AppState: ObservableObject {
         currentRunStart     = Date()
         activeTasks         = []
         pipelineLog         = []
+        runStartTime        = Date()
     }
 
     func commitRun() {
@@ -129,8 +133,8 @@ class AppState: ObservableObject {
             log:             pipelineLog
         )
         runHistory.insert(run, at: 0)
-        // Keep at most 50 history entries
         if runHistory.count > 50 { runHistory = Array(runHistory.prefix(50)) }
+        runStartTime = nil
     }
 
     // MARK: - Log

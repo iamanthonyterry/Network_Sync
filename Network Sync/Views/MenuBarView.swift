@@ -11,6 +11,11 @@ struct MenuBarView: View {
             let done    = appState.activeTasks.filter { $0.phase == .done }.count
             Text("Running — \(done) done, \(active) active")
                 .foregroundStyle(.secondary)
+
+            if let start = appState.runStartTime {
+                ElapsedTimeView(startTime: start, compact: true)
+                    .padding(.horizontal, 8)
+            }
         } else {
             let last = appState.runHistory.first
             if let last {
