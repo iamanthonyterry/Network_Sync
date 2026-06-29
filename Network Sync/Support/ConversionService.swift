@@ -41,8 +41,6 @@ struct ConversionService {
             return false
         }
 
-        session.outputURL = output
-        session.outputFileType = .mp4
         session.shouldOptimizeForNetworkUse = true  // faststart equivalent
 
         // Poll progress on a background task
@@ -55,10 +53,15 @@ struct ConversionService {
             }
         }
 
-        await session.export()
+        let success: Bool
+        do {
+            try await session.export(to: output, as: .mp4)
+            success = true
+        } catch {
+            success = false
+        }
         progressTask.cancel()
 
-        let success = session.status == .completed
         if success {
             await MainActor.run { progress(1.0) }
         }

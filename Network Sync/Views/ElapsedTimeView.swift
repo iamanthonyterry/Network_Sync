@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 /// Displays a live elapsed-time progress bar and label for an active pipeline run.
 /// Uses a repeating timer that ticks every second while the run is active.
