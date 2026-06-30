@@ -2,22 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <!-- App Sandbox -->
+    <!-- App Sandbox is OFF (see ENABLE_APP_SANDBOX in build settings).
+         NetFS SMB mounting requires direct access to mount(2), which the
+         sandbox blocks outright — no entitlement combination works around
+         it. This app is distributed internally, not via the Mac App Store,
+         so sandboxing isn't required. -->
     <key>com.apple.security.app-sandbox</key>
-    <true/>
-
-    <!-- Network: connect to SMB/FTP devices on LAN -->
-    <key>com.apple.security.network.client</key>
-    <true/>
-
-    <!-- File access: read/write volumes the user mounts or selects -->
-    <key>com.apple.security.files.all</key>
-    <true/>
-
-    <!-- Temporary exception: read/write /Volumes for SMB mounts -->
-    <key>com.apple.security.temporary-exception.files.absolute-path.read-write</key>
-    <array>
-        <string>/Volumes/</string>
-    </array>
+    <false/>
 </dict>
 </plist>

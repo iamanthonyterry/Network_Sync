@@ -1,14 +1,13 @@
 import Foundation
-import AppKit
 
+/// Sends sync-completion notification emails via the connected Gmail account.
 struct EmailNotificationService {
 
-    /// Called after a sync completes. Opens a pre-filled mailto: draft
-    /// for each recipient in the notification settings.
-    static func sendSyncComplete(converted: Int, errors: Int) {
+    static func sendSyncComplete(converted: Int, errors: Int) async {
         let settings = AppState.shared.emailNotificationSettings
         guard settings.isEnabled else { return }
         guard !settings.recipients.isEmpty else { return }
+        guard await GmailAuthService.shared.isConnected else { return }
 
         let success = errors == 0
         if success && !settings.notifyOnSuccess { return }
@@ -19,13 +18,15 @@ struct EmailNotificationService {
             : "⚠️ Sync Complete with Errors — \(errors) error\(errors == 1 ? "" : "s")"
 
         let body = buildBody(converted: converted, errors: errors, settings: settings)
+        let addresses = settings.recipients.map(\.email)
 
-        for recipient in settings.recipients {
-            openMailto(to: recipient.email, subject: subject, body: body)
+        let failed = await GmailSendService.sendIndividually(to: addresses, subject: subject, body: body)
+        if !failed.isEmpty {
+            await MainActor.run {
+                AppState.shared.log("⚠️ Failed to email: \(failed.joined(separator: ", "))")
+            }
         }
     }
-
-    // MARK: - Private
 
     private static func buildBody(
         converted: Int,
@@ -46,17 +47,5 @@ struct EmailNotificationService {
         lines.append("—")
         lines.append("Sent by Network Sync")
         return lines.joined(separator: "\n")
-    }
-
-    private static func openMailto(to: String, subject: String, body: String) {
-        var components = URLComponents()
-        components.scheme = "mailto"
-        components.path = to
-        components.queryItems = [
-            URLQueryItem(name: "subject", value: subject),
-            URLQueryItem(name: "body", value: body)
-        ]
-        guard let url = components.url else { return }
-        NSWorkspace.shared.open(url)
     }
 }

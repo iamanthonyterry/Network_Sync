@@ -2,6 +2,7 @@ import SwiftUI
 
 struct EmailNotificationsView: View {
     @EnvironmentObject var appState: AppState
+    @State private var gmailAuth = GmailAuthService.shared
 
     @State private var newName: String = ""
     @State private var newEmail: String = ""
@@ -14,7 +15,51 @@ struct EmailNotificationsView: View {
                 // MARK: Enable toggle
                 Toggle("Send notifications on sync completion", isOn: $appState.emailNotificationSettings.isEnabled)
 
-                if appState.emailNotificationSettings.isEnabled {
+                Group {
+
+                    Divider()
+
+                    // MARK: Gmail connection
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Send From")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        if let email = gmailAuth.connectedEmail {
+                            HStack {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundStyle(.green)
+                                Text(email)
+                                    .font(.body)
+                                Spacer()
+                                Button("Disconnect") {
+                                    gmailAuth.signOut()
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                            }
+                        } else {
+                            HStack {
+                                Button {
+                                    gmailAuth.signIn()
+                                } label: {
+                                    Label("Connect Gmail Account", systemImage: "envelope.badge")
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .controlSize(.small)
+                                .disabled(gmailAuth.isConnecting)
+
+                                if gmailAuth.isConnecting {
+                                    ProgressView().controlSize(.small)
+                                }
+                            }
+                            if let error = gmailAuth.lastError {
+                                Text(error)
+                                    .font(.caption2)
+                                    .foregroundStyle(.red)
+                            }
+                        }
+                    }
 
                     Divider()
 
@@ -102,6 +147,8 @@ struct EmailNotificationsView: View {
                             .foregroundStyle(.tertiary)
                     }
                 }
+                .disabled(!appState.emailNotificationSettings.isEnabled)
+                .opacity(appState.emailNotificationSettings.isEnabled ? 1 : 0.4)
             }
             .padding(.top, 8)
         }

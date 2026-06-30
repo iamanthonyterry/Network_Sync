@@ -200,17 +200,17 @@ struct FolderPickerSheet: View {
     private func mount() async {
         isMounting = true
         mountError = nil
-        let path = await SMBService.mountAndResolve(
-            ip:       store.ipAddress,
-            volume:   store.volumeName,
-            username: store.username,
-            password: store.password
-        )
-        if let path {
+        do {
+            let path = try await SMBService.mountAndResolve(
+                ip:       store.ipAddress,
+                volume:   store.volumeName,
+                username: store.username,
+                password: store.password
+            )
             mountPath = path
             await loadItems(at: URL(fileURLWithPath: path))
-        } else {
-            mountError = "Could not mount \"\(store.volumeName)\". Check IP, volume name, and credentials."
+        } catch {
+            mountError = error.localizedDescription
         }
         isMounting = false
     }

@@ -1,18 +1,39 @@
 import Foundation
 import NetFS
 
+/// Describes why an SMB mount attempt failed, with a message suitable for display to the user.
+struct SMBMountError: LocalizedError {
+    let ip: String
+    let volume: String
+    let status: OSStatus?
+
+    var errorDescription: String? {
+        switch status {
+        case 1:
+            return "Could not mount \"\(volume)\" on \(ip). Check the username and password."
+        case -6585, 64, 60:
+            // Common NetFS codes for unreachable host / timeout.
+            return "Could not reach \(ip). Make sure the server is on and connected to the network."
+        default:
+            let suffix = status.map { " (status \($0))" } ?? ""
+            return "Could not mount \"\(volume)\" on \(ip)\(suffix)."
+        }
+    }
+}
+
 enum SMBService {
 
     // MARK: - Primary API
 
     /// Mount an SMB share and return the actual /Volumes path where it landed.
     /// Uses NetFS (sandbox-safe) instead of osascript.
+    /// Throws `SMBMountError` if the mount could not be completed.
     static func mountAndResolve(
         ip: String,
         volume: String,
         username: String,
         password: String
-    ) async -> String? {
+    ) async throws -> String {
 
         // 1. Already mounted at exact stored name?
         let exactPath = "/Volumes/\(volume)"
@@ -32,9 +53,9 @@ enum SMBService {
 
         // 4. Mount via NetFS
         print("[SMBService] Mounting smb://\(ip)/\(volume) as \(username)…")
-        let success = await runMount(ip: ip, volume: volume, username: username, password: password)
+        let status = await runMount(ip: ip, volume: volume, username: username, password: password)
 
-        let delay: Duration = success ? .milliseconds(1500) : .seconds(1)
+        let delay: Duration = status == 0 ? .milliseconds(1500) : .seconds(1)
         try? await Task.sleep(for: delay)
 
         // 5. New /Volumes entry?
@@ -55,17 +76,70 @@ enum SMBService {
         }
 
         print("[SMBService] ✗ Mount failed — /Volumes: \(volumeNames().joined(separator: ", "))")
-        return nil
+        throw SMBMountError(ip: ip, volume: volume, status: status)
     }
 
     /// Convenience wrapper for a CloudStore.
-    static func mount(store: CloudStore) async -> String? {
-        await mountAndResolve(
+    static func mount(store: CloudStore) async throws -> String {
+        try await mountAndResolve(
             ip:       store.ipAddress,
             volume:   store.volumeName,
             username: store.username,
             password: store.password
         )
+    }
+
+    // MARK: - Share Discovery
+
+    /// Lists the disk shares advertised by an SMB server, so the user can pick
+    /// a volume name instead of typing it. Shells out to `smbutil view`, the
+    /// same way FTPService shells out to curl for HyperDecks.
+    static func listShares(ip: String, username: String, password: String) async -> [String] {
+        let user = username.isEmpty ? "guest" : username
+        let encodedUser = user.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? user
+        let auth = password.isEmpty
+            ? encodedUser
+            : "\(encodedUser):\(password.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? password)"
+
+        let output = await withCheckedContinuation { (continuation: CheckedContinuation<String, Never>) in
+            let process = Process()
+            let pipe = Pipe()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/smbutil")
+            process.arguments = ["view", "-N", "//\(auth)@\(ip)"]
+            process.standardOutput = pipe
+            process.standardError = pipe
+
+            process.terminationHandler = { _ in
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                continuation.resume(returning: String(data: data, encoding: .utf8) ?? "")
+            }
+
+            do {
+                try process.run()
+            } catch {
+                continuation.resume(returning: "")
+            }
+        }
+
+        return parseShares(from: output)
+    }
+
+    /// Parses `smbutil view` output into a list of browsable disk share names,
+    /// skipping admin/system shares like IPC$, print$, and ADMIN$.
+    /// Columns are padded with runs of spaces, so share names that contain a
+    /// single space (e.g. "My Drive") are still captured correctly.
+    private static func parseShares(from output: String) -> [String] {
+        guard let regex = try? NSRegularExpression(pattern: #"^(.+?)\s{2,}Disk\b"#) else { return [] }
+        return output
+            .components(separatedBy: "\n")
+            .compactMap { line -> String? in
+                let range = NSRange(line.startIndex..., in: line)
+                guard let match = regex.firstMatch(in: line, range: range),
+                      let nameRange = Range(match.range(at: 1), in: line) else { return nil }
+                let name = line[nameRange].trimmingCharacters(in: .whitespaces)
+                guard !name.isEmpty, !name.hasSuffix("$") else { return nil }
+                return name
+            }
     }
 
     // MARK: - Private helpers
@@ -75,12 +149,16 @@ enum SMBService {
     }
 
     /// Mount using NetFS — the sandbox-approved way to mount SMB shares.
+    /// Returns the raw NetFS status code (0 == success).
     private static func runMount(
         ip: String, volume: String, username: String, password: String
-    ) async -> Bool {
+    ) async -> OSStatus {
         await withCheckedContinuation { continuation in
-            guard let url = URL(string: "smb://\(ip)/\(volume)") else {
-                continuation.resume(returning: false)
+            // Share names can contain spaces and other characters that aren't
+            // valid in a raw URL string, so percent-encode the path component.
+            guard let encodedVolume = volume.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
+                  let url = URL(string: "smb://\(ip)/\(encodedVolume)") else {
+                continuation.resume(returning: -1)
                 return
             }
 
@@ -107,11 +185,10 @@ enum SMBService {
 
             if status == 0 {
                 print("[SMBService] NetFS mount succeeded")
-                continuation.resume(returning: true)
             } else {
                 print("[SMBService] NetFS mount failed, status: \(status)")
-                continuation.resume(returning: false)
             }
+            continuation.resume(returning: status)
         }
     }
 

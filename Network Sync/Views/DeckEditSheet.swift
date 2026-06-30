@@ -14,6 +14,7 @@ struct DeckEditSheet: View {
     @State private var cloudStoreID: UUID? = nil   // nil = global destination
     @State private var cloudStorePath  = ""
     @State private var showFolderPicker = false
+    @State private var showPathPicker  = false
     @State private var pingStatus: DeckStatus = .unknown
     @State private var isTesting       = false
 
@@ -60,7 +61,17 @@ struct DeckEditSheet: View {
                         TextField("192.168.x.x", text: $ipAddress).textFieldStyle(.roundedBorder)
                     }
                     LabeledContent("Remote Path") {
-                        TextField("usb/DriveName", text: $remotePath).textFieldStyle(.roundedBorder)
+                        HStack(spacing: 8) {
+                            TextField("usb/DriveName", text: $remotePath)
+                                .textFieldStyle(.roundedBorder)
+                            Button {
+                                showPathPicker = true
+                            } label: {
+                                Label("Browse…", systemImage: "folder")
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(ipAddress.isEmpty)
+                        }
                     }
                 }
 
@@ -174,6 +185,11 @@ struct DeckEditSheet: View {
             .formStyle(.grouped)
         }
         .frame(width: 480)
+        .sheet(isPresented: $showPathPicker) {
+            DeckPathPickerSheet(ipAddress: ipAddress, username: username, password: password) { path in
+                remotePath = path
+            }
+        }
         .sheet(isPresented: $showFolderPicker) {
             if let store = selectedStore {
                 FolderPickerSheet(store: store) { path in

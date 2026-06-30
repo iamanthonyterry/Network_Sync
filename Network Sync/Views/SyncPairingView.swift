@@ -97,6 +97,7 @@ private struct DriveRow: View {
     @State private var rootNodes: [FolderNode] = []
     @State private var isLoadingFolders = false
     @State private var selectedNode: FolderNode? = nil
+    @State private var folderLoadError: String? = nil
 
     private var selectedStore: CloudStore? {
         appState.cloudStores.first { $0.id == selectedStoreID }
@@ -166,6 +167,11 @@ private struct DriveRow: View {
                         ProgressView().controlSize(.mini)
                         Text("Loading folders…").font(.caption).foregroundStyle(.secondary)
                     }
+                } else if let error = folderLoadError {
+                    HStack(spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                        Text(error).font(.caption).foregroundStyle(.orange)
+                    }
                 } else if rootNodes.isEmpty {
                     HStack(spacing: 6) {
                         Image(systemName: "folder.badge.questionmark").foregroundStyle(.secondary)
@@ -215,23 +221,25 @@ private struct DriveRow: View {
     private func loadFolders() {
         rootNodes = []
         selectedNode = nil
+        folderLoadError = nil
         guard let store = selectedStore else { return }
         isLoadingFolders = true
         Task {
-            guard let mountPath = await SMBService.mount(store: store) else {
-                isLoadingFolders = false
-                return
-            }
-            let mountURL = URL(fileURLWithPath: mountPath)
-            let items = (try? FileManager.default.contentsOfDirectory(
-                at: mountURL,
-                includingPropertiesForKeys: [.isDirectoryKey],
-                options: [.skipsHiddenFiles]
-            )) ?? []
+            do {
+                let mountPath = try await SMBService.mount(store: store)
+                let mountURL = URL(fileURLWithPath: mountPath)
+                let items = (try? FileManager.default.contentsOfDirectory(
+                    at: mountURL,
+                    includingPropertiesForKeys: [.isDirectoryKey],
+                    options: [.skipsHiddenFiles]
+                )) ?? []
             rootNodes = items
                 .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
                 .sorted { $0.lastPathComponent.localizedCompare($1.lastPathComponent) == .orderedAscending }
                 .map { FolderNode(url: $0) }
+            } catch {
+                folderLoadError = error.localizedDescription
+            }
             isLoadingFolders = false
         }
     }
@@ -431,6 +439,7 @@ private struct CloudStorePairingRow: View {
     @State private var rootNodes: [FolderNode] = []
     @State private var isLoading = false
     @State private var isExpanded = false
+    @State private var loadError: String? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -451,6 +460,11 @@ private struct CloudStorePairingRow: View {
                     HStack {
                         ProgressView().controlSize(.mini)
                         Text("Mounting…").font(.caption).foregroundStyle(.secondary)
+                    }.padding(.vertical, 4)
+                } else if let error = loadError {
+                    HStack(spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                        Text(error).font(.caption).foregroundStyle(.orange)
                     }.padding(.vertical, 4)
                 } else if rootNodes.isEmpty {
                     Text("No folders found").font(.caption).foregroundStyle(.secondary)
@@ -498,22 +512,24 @@ private struct CloudStorePairingRow: View {
 
     private func loadRootFolders() {
         isLoading = true
+        loadError = nil
         Task {
-            guard let mountPath = await SMBService.mount(store: store) else {
-                isLoading = false
-                return
+            do {
+                let mountPath = try await SMBService.mount(store: store)
+                let mountURL = URL(fileURLWithPath: mountPath)
+                let fm = FileManager.default
+                let items = (try? fm.contentsOfDirectory(
+                    at: mountURL,
+                    includingPropertiesForKeys: [.isDirectoryKey],
+                    options: [.skipsHiddenFiles]
+                )) ?? []
+                rootNodes = items
+                    .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
+                    .sorted { $0.lastPathComponent.localizedCompare($1.lastPathComponent) == .orderedAscending }
+                    .map { FolderNode(url: $0) }
+            } catch {
+                loadError = error.localizedDescription
             }
-            let mountURL = URL(fileURLWithPath: mountPath)
-            let fm = FileManager.default
-            let items = (try? fm.contentsOfDirectory(
-                at: mountURL,
-                includingPropertiesForKeys: [.isDirectoryKey],
-                options: [.skipsHiddenFiles]
-            )) ?? []
-            rootNodes = items
-                .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
-                .sorted { $0.lastPathComponent.localizedCompare($1.lastPathComponent) == .orderedAscending }
-                .map { FolderNode(url: $0) }
             isLoading = false
         }
     }

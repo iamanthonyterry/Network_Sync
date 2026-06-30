@@ -13,6 +13,9 @@ struct Network_SyncApp: App {
                     NotificationService.requestPermission()
                     scheduler.sync()
                 }
+                .onOpenURL { url in
+                    GmailAuthService.shared.handleRedirect(url: url)
+                }
                 .onChange(of: appState.scheduleSettings.isEnabled) { scheduler.sync() }
                 .onChange(of: appState.scheduleSettings.hour)      { scheduler.sync() }
                 .onChange(of: appState.scheduleSettings.minute)    { scheduler.sync() }

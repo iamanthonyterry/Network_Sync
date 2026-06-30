@@ -39,6 +39,7 @@ class AppState: ObservableObject {
     @Published var isRunning = false
     @Published var activeTasks: [SyncTask] = []
     @Published var pipelineLog: [String] = []
+    @Published var mountError: String? = nil
 
     // Failed tasks eligible for retry
     var failedTasks: [SyncTask] { activeTasks.filter { $0.phase == .error } }
@@ -120,6 +121,7 @@ class AppState: ObservableObject {
         activeTasks         = []
         pipelineLog         = []
         runStartTime        = Date()
+        mountError          = nil
     }
 
     func commitRun() {

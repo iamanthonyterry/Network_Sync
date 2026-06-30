@@ -18,7 +18,10 @@ struct MenuBarView: View {
             }
         } else {
             let last = appState.runHistory.first
-            if let last {
+            if let error = appState.mountError {
+                Label(error, systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.red)
+            } else if let last {
                 Text("Last run: \(last.finishedAt.formatted(.relative(presentation: .named)))")
                     .foregroundStyle(.secondary)
             } else {

@@ -16,6 +16,11 @@ struct DashboardView: View {
             headerBar
             Divider()
 
+            if let error = appState.mountError {
+                mountErrorBanner(error)
+                Divider()
+            }
+
             if totalDevices == 0 {
                 emptyState
             } else {
@@ -25,6 +30,33 @@ struct DashboardView: View {
             Divider()
             actionBar
         }
+    }
+
+    // MARK: - Mount error banner
+    private func mountErrorBanner(_ message: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.red)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Sync stopped — couldn't reach storage").font(.subheadline).bold()
+                Text(message).font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button {
+                Task { await pipeline.runAll() }
+            } label: {
+                Label("Retry", systemImage: "arrow.counterclockwise")
+            }
+            .buttonStyle(.bordered)
+            Button {
+                appState.mountError = nil
+            } label: {
+                Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(12)
+        .background(Color.red.opacity(0.1))
     }
 
     // MARK: - Header

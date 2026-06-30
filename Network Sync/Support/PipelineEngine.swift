@@ -15,13 +15,14 @@ class PipelineEngine: ObservableObject {
         appState.log("▶ Pipeline started")
 
         appState.log("Mounting \(appState.syncLocation.volumeName)...")
-        guard let resolvedPath = await mountSMBVolume(location: appState.syncLocation) else {
-            appState.log("❌ Could not mount SMB volume. Aborting.")
-            appState.isRunning = false
+        do {
+            let resolvedPath = try await mountSMBVolume(location: appState.syncLocation)
+            appState.syncLocation.resolvedMountPath = resolvedPath
+            appState.log("✅ Mounted at \(resolvedPath)")
+        } catch {
+            failMount(error)
             return
         }
-        appState.syncLocation.resolvedMountPath = resolvedPath
-        appState.log("✅ Mounted at \(resolvedPath)")
 
         await runStorageCleanup()
 
@@ -40,13 +41,15 @@ class PipelineEngine: ObservableObject {
         appState.beginRun()
         appState.log("▶ Single-deck run: \(deck.name)")
 
-        guard let resolvedPath = await mountSMBVolume(location: appState.syncLocation) else {
-            appState.log("❌ Could not mount SMB volume.")
-            appState.isRunning = false
+        appState.log("Mounting \(appState.syncLocation.volumeName)...")
+        do {
+            let resolvedPath = try await mountSMBVolume(location: appState.syncLocation)
+            appState.syncLocation.resolvedMountPath = resolvedPath
+            appState.log("✅ Mounted at \(resolvedPath)")
+        } catch {
+            failMount(error)
             return
         }
-        appState.syncLocation.resolvedMountPath = resolvedPath
-        appState.log("✅ Mounted at \(resolvedPath)")
 
         await syncAndConvert(deck: deck)
         finishRun()
@@ -59,12 +62,13 @@ class PipelineEngine: ObservableObject {
         appState.isRunning = true
         appState.log("↩ Retrying \(failed.count) failed file(s)...")
 
-        guard let resolvedPath = await mountSMBVolume(location: appState.syncLocation) else {
-            appState.log("❌ Could not mount SMB volume.")
-            appState.isRunning = false
+        do {
+            let resolvedPath = try await mountSMBVolume(location: appState.syncLocation)
+            appState.syncLocation.resolvedMountPath = resolvedPath
+        } catch {
+            failMount(error)
             return
         }
-        appState.syncLocation.resolvedMountPath = resolvedPath
 
         let byDeck = Dictionary(grouping: failed, by: \.deckName)
         for (deckName, tasks) in byDeck {
@@ -276,7 +280,7 @@ class PipelineEngine: ObservableObject {
         appState.log("✅ Done — \(c) converted, \(e) errors")
         appState.commitRun()
         NotificationService.sendCompletion(converted: c, errors: e)
-        EmailNotificationService.sendSyncComplete(converted: c, errors: e)
+        Task { await EmailNotificationService.sendSyncComplete(converted: c, errors: e) }
 
         if appState.formatDriveAfterSync {
             Task { await formatSyncedDecks() }
@@ -303,13 +307,23 @@ class PipelineEngine: ObservableObject {
     }
 
     // MARK: - SMB Mount — returns the actual /Volumes path
-    private func mountSMBVolume(location: SyncLocation) async -> String? {
-        await SMBService.mountAndResolve(
+    private func mountSMBVolume(location: SyncLocation) async throws -> String {
+        try await SMBService.mountAndResolve(
             ip:       location.ipAddress,
             volume:   location.volumeName,
             username: location.username,
             password: location.password
         )
+    }
+
+    /// Surfaces a mount failure to the user, logs it, and ends the run.
+    private func failMount(_ error: Error) {
+        let message = error.localizedDescription
+        appState.log("❌ \(message)")
+        appState.mountError = message
+        appState.currentRunErrors += 1
+        appState.isRunning = false
+        appState.commitRun()
     }
 
     // MARK: - Task helpers

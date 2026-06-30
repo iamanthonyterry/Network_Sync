@@ -6,7 +6,7 @@ struct FTPService {
 
     // MARK: - FTP Directory Entry
 
-    struct FTPEntry {
+    struct FTPEntry: Hashable {
         let name: String
         let isDirectory: Bool
         let size: Int64

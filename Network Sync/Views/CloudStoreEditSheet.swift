@@ -14,6 +14,7 @@ struct CloudStoreEditSheet: View {
     @State private var pingStatus: DeckStatus = .unknown
     @State private var isTesting  = false
     @State private var mountResult: String? = nil
+    @State private var showVolumePicker = false
 
     init(store: CloudStore?) {
         existingStore = store
@@ -49,7 +50,17 @@ struct CloudStoreEditSheet: View {
                         TextField("192.168.x.x", text: $ipAddress).textFieldStyle(.roundedBorder)
                     }
                     LabeledContent("Volume Name") {
-                        TextField("e.g. CloudStore", text: $volumeName).textFieldStyle(.roundedBorder)
+                        HStack(spacing: 8) {
+                            TextField("e.g. CloudStore", text: $volumeName)
+                                .textFieldStyle(.roundedBorder)
+                            Button {
+                                showVolumePicker = true
+                            } label: {
+                                Label("Browse…", systemImage: "externaldrive")
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(ipAddress.isEmpty)
+                        }
                     }
                 }
                 Section("Credentials") {
@@ -89,6 +100,11 @@ struct CloudStoreEditSheet: View {
             .formStyle(.grouped)
         }
         .frame(width: 440)
+        .sheet(isPresented: $showVolumePicker) {
+            CloudStoreVolumePickerSheet(ipAddress: ipAddress, username: username, password: password) { share in
+                volumeName = share
+            }
+        }
     }
 
     private func save() {
@@ -124,11 +140,15 @@ struct CloudStoreEditSheet: View {
             }
 
             // 2. Attempt SMB mount
-            let mountPath = await SMBService.mountAndResolve(
-                ip: ipAddress, volume: volumeName,
-                username: username, password: password
-            )
-            mountResult = mountPath.map { "✅ Mounted at \($0)" } ?? "❌ Mount failed"
+            do {
+                let mountPath = try await SMBService.mountAndResolve(
+                    ip: ipAddress, volume: volumeName,
+                    username: username, password: password
+                )
+                mountResult = "✅ Mounted at \(mountPath)"
+            } catch {
+                mountResult = "❌ \(error.localizedDescription)"
+            }
             isTesting = false
         }
     }

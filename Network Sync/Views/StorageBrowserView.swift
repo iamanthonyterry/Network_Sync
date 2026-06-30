@@ -358,19 +358,12 @@ struct StorageBrowserView: View {
         case .hyperDeck(let deck):
             return try await fetchFTPNodes(deck: deck, path: deck.remotePath)
         case .cloudStore(let store):
-            let resolvedPath = await SMBService.mountAndResolve(
+            let mountPath = try await SMBService.mountAndResolve(
                 ip: store.ipAddress,
                 volume: store.volumeName,
                 username: store.username,
                 password: store.password
             )
-            guard let mountPath = resolvedPath else {
-                throw NSError(
-                    domain: "CloudStore",
-                    code: 1,
-                    userInfo: [NSLocalizedDescriptionKey: "Could not mount \"\(store.volumeName)\". Check the IP address, volume name, and credentials."]
-                )
-            }
             return try fetchLocalNodes(at: URL(fileURLWithPath: mountPath))
         case .switcher:
             return []
