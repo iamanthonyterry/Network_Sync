@@ -42,13 +42,26 @@ struct FTPService {
         return parseMovFiles(from: output)
     }
 
+    // MARK: - Download result
+    // Carries a human-readable reason on failure so logs and the UI can
+    // explain *why* a download failed, not just that it did.
+    struct DownloadResult: Sendable {
+        let success: Bool
+        let failureReason: String?
+
+        static let ok = DownloadResult(success: true, failureReason: nil)
+        static func failed(_ reason: String) -> DownloadResult {
+            DownloadResult(success: false, failureReason: reason)
+        }
+    }
+
     // MARK: - Download a single file with progress callback (0.0–1.0)
     static func downloadFile(
         named fileName: String,
         from deck: HyperDeck,
         to destinationURL: URL,
         progress: @escaping @Sendable (Double) -> Void
-    ) async -> Bool {
+    ) async -> DownloadResult {
         let encoded = deck.remotePath
             .addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? deck.remotePath
         let fileEncoded = fileName
@@ -58,6 +71,7 @@ struct FTPService {
         return await withCheckedContinuation { continuation in
             let process = Process()
             let stderrPipe = Pipe()
+            nonisolated(unsafe) var stderrText = ""
 
             process.executableURL = URL(fileURLWithPath: "/usr/bin/curl")
             process.arguments = [
@@ -72,6 +86,7 @@ struct FTPService {
 
             stderrPipe.fileHandleForReading.readabilityHandler = { handle in
                 let text = String(data: handle.availableData, encoding: .utf8) ?? ""
+                stderrText += text
                 if let pct = parseCurlProgress(text) {
                     Task { @MainActor in progress(pct) }
                 }
@@ -79,17 +94,52 @@ struct FTPService {
 
             process.terminationHandler = { p in
                 stderrPipe.fileHandleForReading.readabilityHandler = nil
-                let success = p.terminationStatus == 0
-                if success { Task { @MainActor in progress(1.0) } }
-                continuation.resume(returning: success)
+                if p.terminationStatus == 0 {
+                    Task { @MainActor in progress(1.0) }
+                    continuation.resume(returning: .ok)
+                } else {
+                    let reason = curlFailureReason(exitCode: p.terminationStatus, stderr: stderrText)
+                    continuation.resume(returning: .failed(reason))
+                }
             }
 
             do {
                 try process.run()
             } catch {
-                continuation.resume(returning: false)
+                continuation.resume(returning: .failed("Couldn't launch curl: \(error.localizedDescription)"))
             }
         }
+    }
+
+    /// Turns a curl exit code + raw stderr into a short, readable failure reason.
+    /// See `man curl` exit code list for the full mapping.
+    private static func curlFailureReason(exitCode: Int32, stderr: String) -> String {
+        // --progress-bar writes carriage-return-separated "#" progress ticks to
+        // stderr alongside real error text, so strip anything that's just
+        // progress-bar noise and keep the actual message lines.
+        let detailLines = stderr
+            .components(separatedBy: CharacterSet(charactersIn: "\r\n"))
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { line in
+                guard !line.isEmpty else { return false }
+                return line.contains(where: { !"#% \t0123456789.".contains($0) })
+            }
+        let detail = detailLines.isEmpty ? nil : detailLines.joined(separator: "; ")
+
+        let summary: String
+        switch exitCode {
+        case 7:  summary = "couldn't connect to deck"
+        case 9:  summary = "FTP access denied (check remote path)"
+        case 28: summary = "connection timed out"
+        case 67: summary = "FTP login failed (check username/password)"
+        case 78: summary = "remote file not found"
+        default: summary = "curl exit \(exitCode)"
+        }
+
+        if let detail {
+            return "\(summary) — \(detail)"
+        }
+        return summary
     }
 
     // MARK: - Generic process runner (non-blocking)

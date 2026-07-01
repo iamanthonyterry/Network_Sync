@@ -88,15 +88,17 @@ class PipelineEngine: ObservableObject {
                 let destURL = deckDestDir.appendingPathComponent(task.fileName)
                 try? FileManager.default.removeItem(at: destURL)
 
-                let ok = await FTPService.downloadFile(
+                let result = await FTPService.downloadFile(
                     named: task.fileName, from: deck, to: destURL
                 ) { [weak self] pct in self?.updateTask(id: task.id, syncProgress: pct) }
 
-                if ok {
+                if result.success {
                     Task { @MainActor in self.updateTask(id: task.id, phase: .converting, syncProgress: 1) }
                     toConvert.append(destURL)
                 } else {
-                    Task { @MainActor in self.updateTask(id: task.id, phase: .error, errorMessage: "Retry failed") }
+                    let reason = result.failureReason ?? "unknown error"
+                    Task { @MainActor in self.updateTask(id: task.id, phase: .error, errorMessage: "Retry failed: \(reason)") }
+                    appState.log("  ❌ Retry failed: \(task.fileName) (\(reason))")
                     appState.currentRunErrors += 1
                 }
             }
@@ -186,21 +188,22 @@ class PipelineEngine: ObservableObject {
             updateTask(id: task.id, phase: .downloading, syncProgress: 0)
             appState.log("  ⬇ Downloading \(fileName)...")
 
-            var downloaded = await FTPService.downloadFile(
+            var result = await FTPService.downloadFile(
                 named: fileName, from: deck, to: destURL
             ) { [weak self] pct in self?.updateTask(id: task.id, syncProgress: pct) }
 
-            if !downloaded {
-                appState.log("  ↩ Retrying \(fileName)...")
+            if !result.success {
+                appState.log("  ↩ Retrying \(fileName)... (\(result.failureReason ?? "unknown error"))")
                 try? FileManager.default.removeItem(at: destURL)
-                downloaded = await FTPService.downloadFile(
+                result = await FTPService.downloadFile(
                     named: fileName, from: deck, to: destURL
                 ) { [weak self] pct in self?.updateTask(id: task.id, syncProgress: pct) }
             }
 
-            guard downloaded else {
-                updateTask(id: task.id, phase: .error, errorMessage: "Download failed after retry")
-                appState.log("  ❌ Download failed: \(fileName)")
+            guard result.success else {
+                let reason = result.failureReason ?? "unknown error"
+                updateTask(id: task.id, phase: .error, errorMessage: "Download failed after retry: \(reason)")
+                appState.log("  ❌ Download failed: \(fileName) — \(reason)")
                 appState.currentRunErrors += 1
                 continue
             }

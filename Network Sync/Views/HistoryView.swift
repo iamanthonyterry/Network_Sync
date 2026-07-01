@@ -1,4 +1,6 @@
 import SwiftUI
+import AppKit
+import UniformTypeIdentifiers
 
 struct HistoryView: View {
     @EnvironmentObject var appState: AppState
@@ -146,12 +148,50 @@ struct RunDetailView: View {
                     .background(Color(NSColor.textBackgroundColor))
                     .clipShape(RoundedRectangle(cornerRadius: 6))
                 } label: {
-                    Label("Run Log (\(run.log.count) lines)", systemImage: "doc.text")
-                        .font(.headline)
+                    HStack {
+                        Label("Run Log (\(run.log.count) lines)", systemImage: "doc.text")
+                            .font(.headline)
+                        Spacer()
+                        Button {
+                            exportLog()
+                        } label: {
+                            Label("Export", systemImage: "square.and.arrow.up")
+                        }
+                        .buttonStyle(.borderless)
+                        .disabled(run.log.isEmpty)
+                    }
                 }
             }
             .padding()
         }
+    }
+
+    private func exportLog() {
+        let stamp = run.startedAt.formatted(
+            Date.FormatStyle().year().month(.twoDigits).day(.twoDigits)
+                .hour(.twoDigits(amPM: .omitted)).minute(.twoDigits)
+        ).replacingOccurrences(of: "/", with: "-")
+
+        let panel = NSSavePanel()
+        panel.title = "Export Run Log"
+        panel.nameFieldStringValue = "NetworkSync-Run-\(stamp).log"
+        panel.allowedContentTypes = [.plainText]
+        panel.canCreateDirectories = true
+
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        let header = """
+        Network Sync Run Log
+        Started:  \(run.startedAt.formatted(date: .abbreviated, time: .standard))
+        Finished: \(run.finishedAt.formatted(date: .abbreviated, time: .standard))
+        Duration: \(run.durationFormatted)
+        Decks:    \(run.decksProcessed.joined(separator: ", "))
+        Converted: \(run.converted)  Skipped: \(run.skipped)  Errors: \(run.errors)
+
+        """
+        let contents = header + run.log.joined(separator: "\n")
+
+        try? contents.write(to: url, atomically: true, encoding: .utf8)
     }
 
     private func statCard(value: String, label: String, color: Color) -> some View {
