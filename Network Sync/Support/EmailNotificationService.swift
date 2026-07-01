@@ -7,7 +7,7 @@ struct EmailNotificationService {
         let settings = AppState.shared.emailNotificationSettings
         guard settings.isEnabled else { return }
         guard !settings.recipients.isEmpty else { return }
-        guard await GmailAuthService.shared.isConnected else { return }
+        guard GmailAuthService.shared.isConnected else { return }
 
         let success = errors == 0
         if success && !settings.notifyOnSuccess { return }

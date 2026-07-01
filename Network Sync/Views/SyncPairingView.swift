@@ -233,14 +233,19 @@ private struct DriveRow: View {
                     includingPropertiesForKeys: [.isDirectoryKey],
                     options: [.skipsHiddenFiles]
                 )) ?? []
-            rootNodes = items
-                .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
-                .sorted { $0.lastPathComponent.localizedCompare($1.lastPathComponent) == .orderedAscending }
-                .map { FolderNode(url: $0) }
+                let folderURLs = items
+                    .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
+                    .sorted { $0.lastPathComponent.localizedCompare($1.lastPathComponent) == .orderedAscending }
+                await MainActor.run {
+                    self.rootNodes = folderURLs.map { FolderNode(url: $0) }
+                    self.isLoadingFolders = false
+                }
             } catch {
-                folderLoadError = error.localizedDescription
+                await MainActor.run {
+                    self.folderLoadError = error.localizedDescription
+                    self.isLoadingFolders = false
+                }
             }
-            isLoadingFolders = false
         }
     }
 }
@@ -272,12 +277,11 @@ private final class FolderNode: Identifiable, ObservableObject {
                 includingPropertiesForKeys: [.isDirectoryKey],
                 options: [.skipsHiddenFiles]
             )) ?? []
-            let folders = items
+            let folderURLs = items
                 .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
                 .sorted { $0.lastPathComponent.localizedCompare($1.lastPathComponent) == .orderedAscending }
-                .map { FolderNode(url: $0) }
             await MainActor.run {
-                self.children = folders
+                self.children = folderURLs.map { FolderNode(url: $0) }
                 self.isLoading = false
             }
         }
@@ -576,3 +580,4 @@ private func statusBadge(_ status: DeckStatus) -> some View {
         .foregroundStyle(color)
         .clipShape(Capsule())
 }
+
