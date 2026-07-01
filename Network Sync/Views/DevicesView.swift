@@ -2,45 +2,15 @@ import SwiftUI
 import Network
 import Combine
 
-// MARK: - Status Cache
-// Holds ping results in a stable @StateObject so device rows never
-// flicker back to "Checking…" when the parent view re-renders.
-@MainActor
-final class DeviceStatusCache: ObservableObject {
-    @Published private var cache: [String: DeckStatus] = [:]
-
-    func status(for key: String) -> DeckStatus { cache[key] ?? .unknown }
-
-    func ping(host: String, port: UInt16) async {
-        // Skip if we already have a result — avoids redundant TCP probes.
-        if let existing = cache[host], existing != .unknown { return }
-        cache[host] = .unknown
-
-        guard let nwPort = NWEndpoint.Port(rawValue: port) else {
-            cache[host] = .offline; return
-        }
-        let conn = NWConnection(host: NWEndpoint.Host(host), port: nwPort, using: .tcp)
-        conn.start(queue: .global())
-        cache[host] = await resolveConnectionStatus(conn)
-    }
-
-    func refresh(host: String, port: UInt16) async {
-        cache[host] = .unknown
-        guard let nwPort = NWEndpoint.Port(rawValue: port) else {
-            cache[host] = .offline; return
-        }
-        let conn = NWConnection(host: NWEndpoint.Host(host), port: nwPort, using: .tcp)
-        conn.start(queue: .global())
-        cache[host] = await resolveConnectionStatus(conn)
-    }
-}
-
 // MARK: - DevicesView
+// Live status for every row comes from ConnectionMonitor, which polls all
+// added devices continuously in the background — rows update automatically
+// as devices connect, drop, and reconnect.
 
 struct DevicesView: View {
     @EnvironmentObject var appState: AppState
     @StateObject private var discovery = DeviceDiscovery()
-    @StateObject private var statusCache = DeviceStatusCache()
+    @ObservedObject private var monitor = ConnectionMonitor.shared
 
     @State private var showingAddDeck = false
     @State private var showingAddSwitcher = false
@@ -92,26 +62,7 @@ struct DevicesView: View {
         .sheet(item: $editingDeck) { DeckEditSheet(deck: $0) }
         .sheet(item: $editingSwitcher) { SwitcherEditSheet(switcher: $0) }
         .sheet(item: $editingCloudStore) { CloudStoreEditSheet(store: $0) }
-        .task { await pingAllDevices() }
-        .onChange(of: appState.hyperDecks)  { Task { await pingAllDevices() } }
-        .onChange(of: appState.switchers)   { Task { await pingAllDevices() } }
-        .onChange(of: appState.cloudStores) { Task { await pingAllDevices() } }
-    }
-
-    // MARK: - Ping All
-
-    private func pingAllDevices() async {
-        async let _ = withTaskGroup(of: Void.self) { group in
-            for deck in appState.hyperDecks {
-                group.addTask { await statusCache.ping(host: deck.ipAddress, port: 9993) }
-            }
-            for switcher in appState.switchers {
-                group.addTask { await statusCache.ping(host: switcher.ipAddress, port: BlackmagicSwitcher.controlPort) }
-            }
-            for store in appState.cloudStores {
-                group.addTask { await statusCache.ping(host: store.ipAddress, port: 445) }
-            }
-        }
+        .onAppear { monitor.start() }
     }
 
     // MARK: - Subviews
@@ -134,7 +85,7 @@ struct DevicesView: View {
         if !appState.hyperDecks.isEmpty {
             Section("HyperDecks") {
                 ForEach(appState.hyperDecks) { deck in
-                    DeckRow(deck: deck, statusCache: statusCache)
+                    DeckRow(deck: deck)
                         .contextMenu { Button("Edit…") { editingDeck = deck } }
                 }
                 .onMove { appState.moveDeck(from: $0, to: $1) }
@@ -149,7 +100,7 @@ struct DevicesView: View {
         if !appState.switchers.isEmpty {
             Section("ATEM Switchers") {
                 ForEach(appState.switchers) { switcher in
-                    SwitcherRow(switcher: switcher, statusCache: statusCache)
+                    SwitcherRow(switcher: switcher)
                         .contentShape(Rectangle())
                         .onTapGesture { editingSwitcher = switcher }
                 }
@@ -165,7 +116,7 @@ struct DevicesView: View {
         if !appState.cloudStores.isEmpty {
             Section("Cloud Stores") {
                 ForEach(appState.cloudStores) { store in
-                    CloudStoreRow(store: store, statusCache: statusCache)
+                    CloudStoreRow(store: store)
                         .contentShape(Rectangle())
                         .onTapGesture { editingCloudStore = store }
                 }
@@ -228,17 +179,16 @@ struct DevicesView: View {
 
 struct DeckRow: View {
     let deck: HyperDeck
-    let statusCache: DeviceStatusCache
+    @ObservedObject private var monitor = ConnectionMonitor.shared
     @StateObject private var hyperDeck: HyperDeckService
     @State private var showFormatConfirm = false
 
-    init(deck: HyperDeck, statusCache: DeviceStatusCache) {
+    init(deck: HyperDeck) {
         self.deck = deck
-        self.statusCache = statusCache
         _hyperDeck = StateObject(wrappedValue: HyperDeckService(host: deck.ipAddress))
     }
 
-    private var status: DeckStatus { statusCache.status(for: deck.ipAddress) }
+    private var status: DeckStatus { monitor.status(for: deck.ipAddress) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -335,14 +285,14 @@ struct HyperDeckControls: View {
 
 struct SwitcherRow: View {
     let switcher: BlackmagicSwitcher
-    let statusCache: DeviceStatusCache
+    @ObservedObject private var monitor = ConnectionMonitor.shared
 
     var body: some View {
         DeviceRow(
             name: switcher.name,
             detail: "\(switcher.ipAddress)\(switcher.model.isEmpty ? "" : " · \(switcher.model)")",
             icon: "switch.2",
-            status: statusCache.status(for: switcher.ipAddress)
+            status: monitor.status(for: switcher.ipAddress)
         )
     }
 }
@@ -351,14 +301,14 @@ struct SwitcherRow: View {
 
 struct CloudStoreRow: View {
     let store: CloudStore
-    let statusCache: DeviceStatusCache
+    @ObservedObject private var monitor = ConnectionMonitor.shared
 
     var body: some View {
         DeviceRow(
             name: store.name,
             detail: "\(store.ipAddress)\(store.volumeName.isEmpty ? "" : " · \(store.volumeName)")",
             icon: "externaldrive.badge.wifi",
-            status: statusCache.status(for: store.ipAddress)
+            status: monitor.status(for: store.ipAddress)
         )
     }
 }
@@ -400,11 +350,13 @@ struct StatusBadge: View {
         let color: Color = switch status {
             case .online: .green
             case .offline: .red
+            case .unauthorized: .orange
             default: .gray
         }
         let label: String = switch status {
             case .online: "Online"
             case .offline: "Offline"
+            case .unauthorized: "Login Failed"
             default: "Checking…"
         }
 

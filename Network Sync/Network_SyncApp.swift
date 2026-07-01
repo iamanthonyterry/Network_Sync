@@ -12,6 +12,7 @@ struct Network_SyncApp: App {
                 .onAppear {
                     NotificationService.requestPermission()
                     scheduler.sync()
+                    ConnectionMonitor.shared.start()
                 }
                 .onOpenURL { url in
                     GmailAuthService.shared.handleRedirect(url: url)

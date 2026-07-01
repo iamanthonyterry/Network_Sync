@@ -171,13 +171,7 @@ struct DeckEditSheet: View {
                         }.disabled(ipAddress.isEmpty || isTesting)
                         Spacer()
                         if pingStatus != .unknown {
-                            Label(
-                                pingStatus == .online ? "Connected" : "No Response",
-                                systemImage: pingStatus == .online
-                                    ? "checkmark.circle.fill" : "xmark.circle.fill"
-                            )
-                            .foregroundStyle(pingStatus == .online ? .green : .red)
-                            .font(.subheadline)
+                            testResultLabel
                         }
                     }
                 }
@@ -218,6 +212,18 @@ struct DeckEditSheet: View {
     }
 
     // MARK: - Test
+    @ViewBuilder
+    private var testResultLabel: some View {
+        let (text, systemImage, color): (String, String, Color) = switch pingStatus {
+        case .online:       ("Connected & logged in", "checkmark.circle.fill", .green)
+        case .unauthorized: ("Reachable — login failed", "exclamationmark.triangle.fill", .orange)
+        default:            ("No Response", "xmark.circle.fill", .red)
+        }
+        Label(text, systemImage: systemImage)
+            .foregroundStyle(color)
+            .font(.subheadline)
+    }
+
     private func testConnection() {
         isTesting = true; pingStatus = .unknown
         Task {
@@ -226,7 +232,22 @@ struct DeckEditSheet: View {
             }
             let conn = NWConnection(host: NWEndpoint.Host(ipAddress), port: port, using: .tcp)
             conn.start(queue: .global())
-            pingStatus = await resolveConnectionStatus(conn)
+            let reachable = await resolveConnectionStatus(conn)
+
+            guard reachable == .online else {
+                pingStatus = .offline
+                isTesting = false
+                return
+            }
+
+            // Reachable — now confirm the username/password can actually log in.
+            let deck = HyperDeck(name: name, ipAddress: ipAddress, remotePath: remotePath,
+                                  username: username, password: password)
+            if case .unauthorized = await FTPService.probeAuth(on: deck) {
+                pingStatus = .unauthorized
+            } else {
+                pingStatus = .online
+            }
             isTesting = false
         }
     }

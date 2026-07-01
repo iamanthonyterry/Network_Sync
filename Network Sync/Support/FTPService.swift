@@ -13,6 +13,36 @@ struct FTPService {
         let modified: Date
     }
 
+    // MARK: - Login / permission probe
+
+    /// Result of attempting to actually log in and list the remote path,
+    /// as opposed to just checking that the port is open.
+    enum AuthResult: Sendable {
+        case authorized
+        case unauthorized   // reachable, but login or permission denied
+        case inconclusive   // couldn't tell (timeout, network error, etc.)
+    }
+
+    /// Confirms the deck's stored username/password can actually log in and
+    /// list its configured remote path.
+    static func probeAuth(on deck: HyperDeck) async -> AuthResult {
+        let encoded = deck.remotePath
+            .addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? deck.remotePath
+        let url = "ftp://\(deck.ipAddress)/\(encoded)/"
+
+        let (_, exitCode) = await runProcessWithExitCode(
+            executable: "/usr/bin/curl",
+            args: ["--user", "\(deck.username):\(deck.password)",
+                   "--connect-timeout", "5", "-s", "--list-only", url]
+        )
+
+        switch exitCode {
+        case 0:      return .authorized
+        case 9, 67:  return .unauthorized   // FTP access denied / login failed
+        default:     return .inconclusive
+        }
+    }
+
     // MARK: - List all files in a remote directory
 
     static func listAllFiles(on deck: HyperDeck, path: String) async -> [FTPEntry] {
@@ -144,23 +174,31 @@ struct FTPService {
 
     // MARK: - Generic process runner (non-blocking)
     private static func runProcess(executable: String, args: [String]) async -> String {
+        await runProcessWithExitCode(executable: executable, args: args).output
+    }
+
+    /// Same as `runProcess`, but also surfaces the exit code so callers can
+    /// distinguish "reachable" from "reachable but denied".
+    private static func runProcessWithExitCode(
+        executable: String, args: [String]
+    ) async -> (output: String, exitCode: Int32) {
         await withCheckedContinuation { continuation in
             let process = Process()
             let pipe = Pipe()
             process.executableURL = URL(fileURLWithPath: executable)
             process.arguments = args
             process.standardOutput = pipe
-            process.standardError  = Pipe()   // discard
+            process.standardError  = pipe
 
-            process.terminationHandler = { _ in
+            process.terminationHandler = { p in
                 let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                continuation.resume(returning: String(data: data, encoding: .utf8) ?? "")
+                continuation.resume(returning: (String(data: data, encoding: .utf8) ?? "", p.terminationStatus))
             }
 
             do {
                 try process.run()
             } catch {
-                continuation.resume(returning: "")
+                continuation.resume(returning: ("", -1))
             }
         }
     }

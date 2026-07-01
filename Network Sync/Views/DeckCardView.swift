@@ -31,11 +31,15 @@ struct DeckCardView: View {
     let deck: HyperDeck
     @EnvironmentObject var appState: AppState
     @StateObject private var pipeline = PipelineEngine.shared
+    @ObservedObject private var monitor = ConnectionMonitor.shared
 
-    @State private var pingStatus: DeckStatus = .unknown
     @State private var files: [String] = []
     @State private var isShowingFiles = false
     @State private var isFetchingFiles = false
+
+    // Live status from the shared monitor, which polls continuously and
+    // auto-recovers as soon as the deck reconnects.
+    private var pingStatus: DeckStatus { monitor.status(for: deck.ipAddress) }
 
     // Tasks belonging to this deck
     private var deckTasks: [SyncTask] {
@@ -88,7 +92,10 @@ struct DeckCardView: View {
                         Text("Reading drive...").font(.caption).foregroundStyle(.secondary)
                     }.padding(.vertical, 4)
                 } else if files.isEmpty {
-                    Text("No .mov files found.").font(.caption).foregroundStyle(.secondary)
+                    Text(pingStatus == .unauthorized
+                         ? "Login failed — check username/password."
+                         : "No .mov files found.")
+                        .font(.caption).foregroundStyle(.secondary)
                         .padding(.vertical, 4)
                 } else {
                     VStack(alignment: .leading, spacing: 3) {
@@ -110,7 +117,7 @@ struct DeckCardView: View {
             // Actions
             HStack {
                 Button {
-                    Task { await checkPing(); await fetchFiles() }
+                    Task { await monitor.pingNow(deck: deck); await fetchFiles() }
                 } label: {
                     Label("Refresh", systemImage: "arrow.clockwise")
                 }.buttonStyle(.borderless)
@@ -129,23 +136,17 @@ struct DeckCardView: View {
                     Label("Sync & Convert", systemImage: "arrow.triangle.2.circlepath")
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(pingStatus == .offline || appState.isRunning)
+                .disabled(pingStatus != .online || appState.isRunning)
             }
         }
         .padding()
         .background(Color(NSColor.controlBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.primary.opacity(0.08), lineWidth: 1))
-        .task { await checkPing(); await fetchFiles() }
-    }
-
-    // MARK: - Ping
-    private func checkPing() async {
-        pingStatus = .unknown
-        guard let port = NWEndpoint.Port(rawValue: UInt16(21)) else { return }
-        let conn = NWConnection(host: NWEndpoint.Host(deck.ipAddress), port: port, using: .tcp)
-        conn.start(queue: .global())
-        pingStatus = await resolveConnectionStatus(conn)
+        .task { await fetchFiles() }
+        .onChange(of: pingStatus) { _, newValue in
+            if newValue == .online && files.isEmpty { Task { await fetchFiles() } }
+        }
     }
 
     // MARK: - FTP file list
@@ -161,11 +162,12 @@ struct DeckCardView: View {
     private func statusBadge(_ status: DeckStatus) -> some View {
         let (label, color): (String, Color) = {
             switch status {
-            case .unknown:     return ("Checking", .gray)
-            case .online:      return ("Online", .green)
-            case .offline:     return ("Offline", .red)
-            case .syncing:     return ("Syncing", .blue)
-            case .transcoding: return ("Converting", .orange)
+            case .unknown:      return ("Checking", .gray)
+            case .online:       return ("Online", .green)
+            case .offline:      return ("Offline", .red)
+            case .unauthorized: return ("Login Failed", .orange)
+            case .syncing:      return ("Syncing", .blue)
+            case .transcoding:  return ("Converting", .orange)
             }
         }()
         Text(label)

@@ -89,38 +89,41 @@ enum SMBService {
         )
     }
 
+    // MARK: - Login / permission probe
+
+    /// Result of actually attempting to authenticate against the share list,
+    /// as opposed to just checking the SMB port is open.
+    enum AuthResult: Sendable {
+        case authorized
+        case unauthorized   // reachable, but login denied
+        case inconclusive   // couldn't tell (timeout, network error, etc.)
+    }
+
+    /// Confirms the store's stored username/password can actually log in,
+    /// without mounting anything. Lighter weight than `mount(store:)`, so
+    /// it's safe to call on a recurring health-check timer.
+    static func probeAuth(ip: String, username: String, password: String) async -> AuthResult {
+        let (output, exitCode) = await runView(ip: ip, username: username, password: password)
+        if exitCode == 0 { return .authorized }
+
+        let lower = output.lowercased()
+        let authFailureMarkers = [
+            "authentication error", "logon failure", "login failed",
+            "access denied", "permission denied", "logon_failure"
+        ]
+        if authFailureMarkers.contains(where: lower.contains) {
+            return .unauthorized
+        }
+        return .inconclusive
+    }
+
     // MARK: - Share Discovery
 
     /// Lists the disk shares advertised by an SMB server, so the user can pick
     /// a volume name instead of typing it. Shells out to `smbutil view`, the
     /// same way FTPService shells out to curl for HyperDecks.
     static func listShares(ip: String, username: String, password: String) async -> [String] {
-        let user = username.isEmpty ? "guest" : username
-        let encodedUser = user.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? user
-        let auth = password.isEmpty
-            ? encodedUser
-            : "\(encodedUser):\(password.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? password)"
-
-        let output = await withCheckedContinuation { (continuation: CheckedContinuation<String, Never>) in
-            let process = Process()
-            let pipe = Pipe()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/smbutil")
-            process.arguments = ["view", "-N", "//\(auth)@\(ip)"]
-            process.standardOutput = pipe
-            process.standardError = pipe
-
-            process.terminationHandler = { _ in
-                let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                continuation.resume(returning: String(data: data, encoding: .utf8) ?? "")
-            }
-
-            do {
-                try process.run()
-            } catch {
-                continuation.resume(returning: "")
-            }
-        }
-
+        let (output, _) = await runView(ip: ip, username: username, password: password)
         return parseShares(from: output)
     }
 
@@ -143,6 +146,36 @@ enum SMBService {
     }
 
     // MARK: - Private helpers
+
+    /// Runs `smbutil view` against a server and returns its combined output
+    /// and exit code. Used both for share discovery and for auth probing.
+    private static func runView(ip: String, username: String, password: String) async -> (output: String, exitCode: Int32) {
+        let user = username.isEmpty ? "guest" : username
+        let encodedUser = user.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? user
+        let auth = password.isEmpty
+            ? encodedUser
+            : "\(encodedUser):\(password.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? password)"
+
+        return await withCheckedContinuation { continuation in
+            let process = Process()
+            let pipe = Pipe()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/smbutil")
+            process.arguments = ["view", "-N", "//\(auth)@\(ip)"]
+            process.standardOutput = pipe
+            process.standardError = pipe
+
+            process.terminationHandler = { p in
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                continuation.resume(returning: (String(data: data, encoding: .utf8) ?? "", p.terminationStatus))
+            }
+
+            do {
+                try process.run()
+            } catch {
+                continuation.resume(returning: ("", -1))
+            }
+        }
+    }
 
     private static func volumeNames() -> [String] {
         (try? FileManager.default.contentsOfDirectory(atPath: "/Volumes")) ?? []

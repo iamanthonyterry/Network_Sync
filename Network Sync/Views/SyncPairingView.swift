@@ -1,5 +1,4 @@
 import SwiftUI
-import Network
 import Combine
 
 // MARK: - SyncPairingView
@@ -91,8 +90,9 @@ private struct CloudStorePanel: View {
 private struct DriveRow: View {
     let deck: HyperDeck
     @EnvironmentObject var appState: AppState
+    @ObservedObject private var monitor = ConnectionMonitor.shared
 
-    @State private var pingStatus: DeckStatus = .unknown
+    private var pingStatus: DeckStatus { monitor.status(for: deck.ipAddress) }
     @State private var selectedStoreID: UUID? = nil
     @State private var rootNodes: [FolderNode] = []
     @State private var isLoadingFolders = false
@@ -128,7 +128,7 @@ private struct DriveRow: View {
             RoundedRectangle(cornerRadius: 10)
                 .stroke(Color.primary.opacity(0.08), lineWidth: 1)
         )
-        .task { await checkPing() }
+        .onAppear { monitor.start() }
         .onChange(of: selectedStoreID) { _, _ in loadFolders() }
     }
 
@@ -210,14 +210,6 @@ private struct DriveRow: View {
     }
 
     // MARK: Helpers
-    private func checkPing() async {
-        pingStatus = .unknown
-        guard let port = NWEndpoint.Port(rawValue: 21) else { return }
-        let conn = NWConnection(host: NWEndpoint.Host(deck.ipAddress), port: port, using: .tcp)
-        conn.start(queue: .global())
-        pingStatus = await resolveConnectionStatus(conn)
-    }
-
     private func loadFolders() {
         rootNodes = []
         selectedNode = nil
@@ -438,8 +430,9 @@ private struct SelectableFolderTreeRow: View {
 private struct CloudStorePairingRow: View {
     let store: CloudStore
     @EnvironmentObject var appState: AppState
+    @ObservedObject private var monitor = ConnectionMonitor.shared
 
-    @State private var pingStatus: DeckStatus = .unknown
+    private var pingStatus: DeckStatus { monitor.status(for: store.ipAddress) }
     @State private var rootNodes: [FolderNode] = []
     @State private var isLoading = false
     @State private var isExpanded = false
@@ -492,7 +485,7 @@ private struct CloudStorePairingRow: View {
             RoundedRectangle(cornerRadius: 10)
                 .stroke(Color.primary.opacity(0.08), lineWidth: 1)
         )
-        .task { await checkPing() }
+        .onAppear { monitor.start() }
     }
 
     private var storeIcon: some View {
@@ -504,14 +497,6 @@ private struct CloudStorePairingRow: View {
                 .font(.system(size: 18))
                 .foregroundStyle(.purple)
         }
-    }
-
-    private func checkPing() async {
-        pingStatus = .unknown
-        guard let port = NWEndpoint.Port(rawValue: 445) else { return }
-        let conn = NWConnection(host: NWEndpoint.Host(store.ipAddress), port: port, using: .tcp)
-        conn.start(queue: .global())
-        pingStatus = await resolveConnectionStatus(conn)
     }
 
     private func loadRootFolders() {
@@ -566,11 +551,12 @@ private func emptyNotice(_ message: String, icon: String) -> some View {
 @ViewBuilder
 private func statusBadge(_ status: DeckStatus) -> some View {
     let (label, color): (String, Color) = switch status {
-    case .unknown:     ("Checking", .gray)
-    case .online:      ("Online", .green)
-    case .offline:     ("Offline", .red)
-    case .syncing:     ("Syncing", .blue)
-    case .transcoding: ("Converting", .orange)
+    case .unknown:      ("Checking", .gray)
+    case .online:       ("Online", .green)
+    case .offline:      ("Offline", .red)
+    case .unauthorized: ("Login Failed", .orange)
+    case .syncing:      ("Syncing", .blue)
+    case .transcoding:  ("Converting", .orange)
     }
 
     Text(label)

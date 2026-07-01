@@ -82,6 +82,7 @@ final class HyperDeckService: ObservableObject {
 
     func fetchTransport() async {
         let response = await sendAndReceive(command: "transport info\n")
+        isConnected = !response.isEmpty
         transport = parseTransport(from: response)
     }
 

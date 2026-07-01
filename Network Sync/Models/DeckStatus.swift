@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - Deck Status
 enum DeckStatus: String, Codable {
-    case unknown, online, offline, syncing, transcoding
+    case unknown, online, offline, unauthorized, syncing, transcoding
 }
 
 // MARK: - HyperDeck
