@@ -78,11 +78,13 @@ class PipelineEngine: ObservableObject {
             var toConvert: [URL] = []
 
             for task in tasks {
-                if let i = appState.activeTasks.firstIndex(where: { $0.id == task.id }) {
-                    appState.activeTasks[i].phase           = .downloading
-                    appState.activeTasks[i].syncProgress    = 0
-                    appState.activeTasks[i].convertProgress = 0
-                    appState.activeTasks[i].errorMessage    = nil
+                await MainActor.run {
+                    if let i = appState.activeTasks.firstIndex(where: { $0.id == task.id }) {
+                        appState.activeTasks[i].phase           = .downloading
+                        appState.activeTasks[i].syncProgress    = 0
+                        appState.activeTasks[i].convertProgress = 0
+                        appState.activeTasks[i].errorMessage    = nil
+                    }
                 }
 
                 let destURL = deckDestDir.appendingPathComponent(task.fileName)
@@ -90,14 +92,14 @@ class PipelineEngine: ObservableObject {
 
                 let result = await FTPService.downloadFile(
                     named: task.fileName, from: deck, to: destURL
-                ) { [weak self] pct in self?.updateTask(id: task.id, syncProgress: pct) }
+                ) { [weak self] pct in Task { @MainActor in self?.updateTask(id: task.id, syncProgress: pct) } }
 
                 if result.success {
-                    Task { @MainActor in self.updateTask(id: task.id, phase: .converting, syncProgress: 1) }
+                    await MainActor.run { self.updateTask(id: task.id, phase: .converting, syncProgress: 1) }
                     toConvert.append(destURL)
                 } else {
                     let reason = result.failureReason ?? "unknown error"
-                    Task { @MainActor in self.updateTask(id: task.id, phase: .error, errorMessage: "Retry failed: \(reason)") }
+                    await MainActor.run { self.updateTask(id: task.id, phase: .error, errorMessage: "Retry failed: \(reason)") }
                     appState.log("  ❌ Retry failed: \(task.fileName) (\(reason))")
                     appState.currentRunErrors += 1
                 }
@@ -190,19 +192,19 @@ class PipelineEngine: ObservableObject {
 
             var result = await FTPService.downloadFile(
                 named: fileName, from: deck, to: destURL
-            ) { [weak self] pct in self?.updateTask(id: task.id, syncProgress: pct) }
+            ) { [weak self] pct in Task { @MainActor in self?.updateTask(id: task.id, syncProgress: pct) } }
 
             if !result.success {
                 appState.log("  ↩ Retrying \(fileName)... (\(result.failureReason ?? "unknown error"))")
                 try? FileManager.default.removeItem(at: destURL)
                 result = await FTPService.downloadFile(
                     named: fileName, from: deck, to: destURL
-                ) { [weak self] pct in self?.updateTask(id: task.id, syncProgress: pct) }
+                ) { [weak self] pct in Task { @MainActor in self?.updateTask(id: task.id, syncProgress: pct) } }
             }
 
             guard result.success else {
                 let reason = result.failureReason ?? "unknown error"
-                updateTask(id: task.id, phase: .error, errorMessage: "Download failed after retry: \(reason)")
+                await MainActor.run { self.updateTask(id: task.id, phase: .error, errorMessage: "Download failed after retry: \(reason)") }
                 appState.log("  ❌ Download failed: \(fileName) — \(reason)")
                 appState.currentRunErrors += 1
                 continue

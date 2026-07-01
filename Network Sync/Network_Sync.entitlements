@@ -2,12 +2,17 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <!-- App Sandbox is OFF (see ENABLE_APP_SANDBOX in build settings).
-         NetFS SMB mounting requires direct access to mount(2), which the
-         sandbox blocks outright — no entitlement combination works around
-         it. This app is distributed internally, not via the Mac App Store,
-         so sandboxing isn't required. -->
+    <!-- App Sandbox is required for Mac App Store distribution.
+         SMBService mounts via NetFSMountURLSync with a default (nil)
+         mount path, which is sandbox-safe — it's only *custom* mount
+         paths and raw mount(2)/osascript that the sandbox blocks. -->
     <key>com.apple.security.app-sandbox</key>
-    <false/>
+    <true/>
+    <key>com.apple.security.network.client</key>
+    <true/>
+    <key>com.apple.security.network.server</key>
+    <true/>
+    <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
 </dict>
 </plist>

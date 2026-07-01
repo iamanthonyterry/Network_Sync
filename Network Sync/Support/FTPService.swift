@@ -79,8 +79,8 @@ struct FTPService {
         let success: Bool
         let failureReason: String?
 
-        static let ok = DownloadResult(success: true, failureReason: nil)
-        static func failed(_ reason: String) -> DownloadResult {
+        nonisolated static let ok = DownloadResult(success: true, failureReason: nil)
+        nonisolated static func failed(_ reason: String) -> DownloadResult {
             DownloadResult(success: false, failureReason: reason)
         }
     }
@@ -143,7 +143,7 @@ struct FTPService {
 
     /// Turns a curl exit code + raw stderr into a short, readable failure reason.
     /// See `man curl` exit code list for the full mapping.
-    private static func curlFailureReason(exitCode: Int32, stderr: String) -> String {
+    private nonisolated static func curlFailureReason(exitCode: Int32, stderr: String) -> String {
         // --progress-bar writes carriage-return-separated "#" progress ticks to
         // stderr alongside real error text, so strip anything that's just
         // progress-bar noise and keep the actual message lines.
@@ -232,7 +232,7 @@ struct FTPService {
             }
     }
 
-    private static func parseCurlProgress(_ text: String) -> Double? {
+    private nonisolated static func parseCurlProgress(_ text: String) -> Double? {
         guard let regex = try? NSRegularExpression(pattern: #"(\d+(?:\.\d+)?)\s*%"#),
               let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
               let range = Range(match.range(at: 1), in: text),
