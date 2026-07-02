@@ -28,6 +28,12 @@ class AppState: ObservableObject {
     @Published var runHistory: [PipelineRun] = [] {
         didSet { save(runHistory, key: "runHistory") }
     }
+    @Published var workflows: [Workflow] = [] {
+        didSet { save(workflows, key: "workflows") }
+    }
+    @Published var workflowRunHistory: [WorkflowRun] = [] {
+        didSet { save(workflowRunHistory, key: "workflowRunHistory") }
+    }
     @Published var emailNotificationSettings: EmailNotificationSettings = EmailNotificationSettings() {
         didSet { save(emailNotificationSettings, key: "emailNotificationSettings") }
     }
@@ -62,6 +68,8 @@ class AppState: ObservableObject {
         conversionSettings = load(ConversionSettings.self, key: "conversionSettings") ?? ConversionSettings()
         scheduleSettings   = load(ScheduleSettings.self,   key: "scheduleSettings")   ?? ScheduleSettings()
         runHistory                 = load([PipelineRun].self,               key: "runHistory")                 ?? []
+        workflows                  = load([Workflow].self,                  key: "workflows")                  ?? []
+        workflowRunHistory         = load([WorkflowRun].self,               key: "workflowRunHistory")         ?? []
         emailNotificationSettings  = load(EmailNotificationSettings.self,   key: "emailNotificationSettings")  ?? EmailNotificationSettings()
         formatDriveAfterSync       = UserDefaults.standard.bool(forKey: "formatDriveAfterSync")
     }
@@ -109,6 +117,29 @@ class AppState: ObservableObject {
     func moveCloudStore(from: IndexSet, to: Int) {
         cloudStores.move(fromOffsets: from, toOffset: to)
         for i in cloudStores.indices { cloudStores[i].sortOrder = i }
+    }
+
+    // MARK: - Workflow CRUD
+    func addWorkflow(_ workflow: Workflow) {
+        var w = workflow; w.sortOrder = workflows.count
+        workflows.append(w)
+    }
+    func updateWorkflow(_ workflow: Workflow) {
+        guard let i = workflows.firstIndex(where: { $0.id == workflow.id }) else { return }
+        workflows[i] = workflow
+    }
+    func deleteWorkflow(id: UUID) { workflows.removeAll { $0.id == id } }
+    func duplicateWorkflow(id: UUID) {
+        guard let original = workflows.first(where: { $0.id == id }) else { return }
+        var copy = original
+        copy.id = UUID()
+        copy.name = "\(original.name) Copy"
+        copy.schedule.isEnabled = false
+        addWorkflow(copy)
+    }
+    func moveWorkflow(from: IndexSet, to: Int) {
+        workflows.move(fromOffsets: from, toOffset: to)
+        for i in workflows.indices { workflows[i].sortOrder = i }
     }
 
     // MARK: - Run lifecycle

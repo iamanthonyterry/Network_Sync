@@ -144,7 +144,7 @@ struct PipelineRun: Identifiable, Codable, Hashable {
 }
 
 // MARK: - Schedule Settings
-struct ScheduleSettings: Codable {
+struct ScheduleSettings: Codable, Hashable {
     var isEnabled: Bool = false
     var hour: Int = 2
     var minute: Int = 0
