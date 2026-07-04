@@ -115,6 +115,34 @@ enum RenameToken: String, CaseIterable {
     }
 }
 
+// MARK: - Rename Pattern Engine
+// Single source of truth for turning a pattern + file info into a final
+// name — used by both the live preview in the editor and the real run.
+enum RenamePatternEngine {
+    static func apply(
+        pattern: String,
+        originalName: String,
+        deviceName: String,
+        index: Int,
+        date: Date = Date()
+    ) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd"
+        let dateString = formatter.string(from: date)
+        formatter.dateFormat = "HHmmss"
+        let timeString = formatter.string(from: date)
+
+        let result = pattern
+            .replacingOccurrences(of: RenameToken.name.rawValue, with: originalName)
+            .replacingOccurrences(of: RenameToken.device.rawValue, with: deviceName)
+            .replacingOccurrences(of: RenameToken.date.rawValue, with: dateString)
+            .replacingOccurrences(of: RenameToken.time.rawValue, with: timeString)
+            .replacingOccurrences(of: RenameToken.index.rawValue, with: String(format: "%03d", index))
+
+        return result.isEmpty ? originalName : result
+    }
+}
+
 // MARK: - Workflow Step
 struct WorkflowStep: Identifiable, Codable, Hashable {
     var id = UUID()

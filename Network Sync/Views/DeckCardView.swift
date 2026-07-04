@@ -30,16 +30,24 @@ func resolveConnectionStatus(_ conn: NWConnection) async -> DeckStatus {
 struct DeckCardView: View {
     let deck: HyperDeck
     @EnvironmentObject var appState: AppState
-    @StateObject private var pipeline = PipelineEngine.shared
+    @StateObject private var workflowEngine = WorkflowEngine.shared
     @ObservedObject private var monitor = ConnectionMonitor.shared
 
     @State private var files: [String] = []
     @State private var isShowingFiles = false
     @State private var isFetchingFiles = false
+    @State private var isShowingEdit = false
+    @State private var showFormatConfirm = false
+    @StateObject private var hyperDeck: HyperDeckService
 
     // Live status from the shared monitor, which polls continuously and
     // auto-recovers as soon as the deck reconnects.
     private var pingStatus: DeckStatus { monitor.status(for: deck.ipAddress) }
+
+    init(deck: HyperDeck) {
+        self.deck = deck
+        _hyperDeck = StateObject(wrappedValue: HyperDeckService(host: deck.ipAddress))
+    }
 
     // Tasks belonging to this deck
     private var deckTasks: [SyncTask] {
@@ -112,6 +120,12 @@ struct DeckCardView: View {
                     .font(.subheadline).bold()
             }
 
+            // Live transport controls — record/stop, plus a manual format
+            if pingStatus == .online {
+                Divider()
+                HyperDeckControls(hyperDeck: hyperDeck, showFormatConfirm: $showFormatConfirm)
+            }
+
             Divider()
 
             // Actions
@@ -122,6 +136,12 @@ struct DeckCardView: View {
                     Label("Refresh", systemImage: "arrow.clockwise")
                 }.buttonStyle(.borderless)
 
+                Button {
+                    isShowingEdit = true
+                } label: {
+                    Image(systemName: "pencil")
+                }.buttonStyle(.borderless)
+
                 Button(role: .destructive) {
                     appState.deleteDeck(id: deck.id)
                 } label: {
@@ -130,13 +150,7 @@ struct DeckCardView: View {
 
                 Spacer()
 
-                Button {
-                    Task { await pipeline.runDeck(deck) }
-                } label: {
-                    Label("Sync & Convert", systemImage: "arrow.triangle.2.circlepath")
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(pingStatus != .online || appState.isRunning)
+                runWorkflowMenu
             }
         }
         .padding()
@@ -146,6 +160,50 @@ struct DeckCardView: View {
         .task { await fetchFiles() }
         .onChange(of: pingStatus) { _, newValue in
             if newValue == .online && files.isEmpty { Task { await fetchFiles() } }
+        }
+        .sheet(isPresented: $isShowingEdit) {
+            DeckEditSheet(deck: deck)
+        }
+        .confirmationDialog(
+            "Format Drive?",
+            isPresented: $showFormatConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Format", role: .destructive) {
+                Task { await hyperDeck.formatDrive() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This will erase all media on \(deck.name). This cannot be undone.")
+        }
+        .onAppear { hyperDeck.startPolling() }
+        .onDisappear { hyperDeck.stopPolling() }
+    }
+
+    // MARK: - Run Workflow menu
+    // Lets the user pick any configured workflow and run it against just
+    // this device, regardless of that workflow's own target list.
+    @ViewBuilder
+    private var runWorkflowMenu: some View {
+        if appState.workflows.isEmpty {
+            Label("No Workflows", systemImage: "flowchart")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        } else {
+            Menu {
+                ForEach(appState.workflows.sorted { $0.sortOrder < $1.sortOrder }) { workflow in
+                    Button(workflow.name) {
+                        Task { await workflowEngine.runDevice(workflow, deck: deck) }
+                    }
+                    .disabled(workflow.steps.isEmpty)
+                }
+            } label: {
+                Label("Run Workflow", systemImage: "flowchart")
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .buttonStyle(.borderedProminent)
+            .disabled(pingStatus != .online || appState.isRunning)
         }
     }
 
@@ -194,6 +252,62 @@ struct DeckCardView: View {
         case .converting: return .orange
         case .done: return .green
         case .error: return .red
+        }
+    }
+}
+
+// MARK: - HyperDeck Transport Controls
+// Record/stop plus a manual format action, shown while the deck is online.
+
+struct HyperDeckControls: View {
+    @ObservedObject var hyperDeck: HyperDeckService
+    @Binding var showFormatConfirm: Bool
+
+    private var isRecording: Bool { hyperDeck.transport == .recording }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            if isRecording {
+                Circle()
+                    .fill(.red)
+                    .frame(width: 8, height: 8)
+                    .symbolEffect(.pulse)
+                Text("REC")
+                    .font(.caption).bold()
+                    .foregroundStyle(.red)
+            }
+
+            Button {
+                Task {
+                    if isRecording { await hyperDeck.stop() }
+                    else { await hyperDeck.record() }
+                }
+            } label: {
+                if isRecording {
+                    Label("Stop", systemImage: "stop.circle.fill")
+                } else {
+                    Label("Record", systemImage: "record.circle")
+                        .foregroundStyle(.red)
+                }
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .disabled(hyperDeck.isBusy)
+            .animation(.easeInOut(duration: 0.2), value: isRecording)
+
+            Spacer()
+
+            Button { showFormatConfirm = true } label: {
+                Label("Format", systemImage: "exclamationmark.triangle")
+                    .foregroundStyle(.orange)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .disabled(hyperDeck.isBusy)
+
+            if hyperDeck.isBusy {
+                ProgressView().controlSize(.small)
+            }
         }
     }
 }

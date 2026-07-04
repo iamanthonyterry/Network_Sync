@@ -18,15 +18,29 @@ final class WorkflowEngine: ObservableObject {
         var files: [URL] = []
     }
 
-    // MARK: - Run
+    // MARK: - Run (all target devices)
 
     func run(_ workflow: Workflow) async {
+        await start(workflow, decks: targetDecks(for: workflow))
+    }
+
+    // MARK: - Run (single device)
+    // Runs the workflow's steps against exactly one device, regardless of
+    // that workflow's own target list — used by the per-device "Run
+    // Workflow" action on the Dashboard.
+
+    func runDevice(_ workflow: Workflow, deck: HyperDeck) async {
+        await start(workflow, decks: [deck])
+    }
+
+    // MARK: - Shared run loop
+
+    private func start(_ workflow: Workflow, decks: [HyperDeck]) async {
         guard !appState.isRunning else { return }
         appState.isRunning = true
         appState.beginRun()
         appState.log("▶ Workflow started: \(workflow.name)")
 
-        let decks = targetDecks(for: workflow)
         guard !decks.isEmpty else {
             appState.log("⚠️ No devices configured for this workflow")
             finishRun(workflow: workflow)
@@ -238,26 +252,18 @@ final class WorkflowEngine: ObservableObject {
             return
         }
 
-        let formatter = DateFormatter()
         var renamed: [URL] = []
 
         for (index, url) in context.files.enumerated() {
             let ext = url.pathExtension
             let originalName = (url.lastPathComponent as NSString).deletingPathExtension
 
-            formatter.dateFormat = "yyyyMMdd"
-            let dateString = formatter.string(from: Date())
-            formatter.dateFormat = "HHmmss"
-            let timeString = formatter.string(from: Date())
-
-            var newName = pattern
-                .replacingOccurrences(of: RenameToken.name.rawValue, with: originalName)
-                .replacingOccurrences(of: RenameToken.device.rawValue, with: context.deck.name)
-                .replacingOccurrences(of: RenameToken.date.rawValue, with: dateString)
-                .replacingOccurrences(of: RenameToken.time.rawValue, with: timeString)
-                .replacingOccurrences(of: RenameToken.index.rawValue, with: String(format: "%03d", index + 1))
-
-            if newName.isEmpty { newName = originalName }
+            let newName = RenamePatternEngine.apply(
+                pattern: pattern,
+                originalName: originalName,
+                deviceName: context.deck.name,
+                index: index + 1
+            )
             let newURL = url.deletingLastPathComponent().appendingPathComponent("\(newName).\(ext)")
 
             do {

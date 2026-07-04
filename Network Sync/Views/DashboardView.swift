@@ -1,8 +1,20 @@
 import SwiftUI
 
+// MARK: - DashboardView
+// Home base: shows every configured device (HyperDecks, ATEM Switchers,
+// Cloud Stores) plus anything found on the network, all in one place.
+// Add, edit, and delete devices here; run a workflow against a single
+// HyperDeck right from its card via "Run Workflow".
+
 struct DashboardView: View {
     @EnvironmentObject var appState: AppState
     @StateObject private var pipeline = PipelineEngine.shared
+    @StateObject private var discovery = DeviceDiscovery()
+    @ObservedObject private var monitor = ConnectionMonitor.shared
+
+    @State private var showingAddDeck = false
+    @State private var showingAddSwitcher = false
+    @State private var showingAddCloudStore = false
 
     var activeCount: Int  { appState.activeTasks.filter { $0.phase == .downloading || $0.phase == .converting }.count }
     var doneCount: Int    { appState.activeTasks.filter { $0.phase == .done }.count }
@@ -10,6 +22,11 @@ struct DashboardView: View {
 
     var totalDevices: Int  { appState.hyperDecks.count + appState.switchers.count + appState.cloudStores.count }
     var hasDecks: Bool     { !appState.hyperDecks.isEmpty }
+
+    private var hasDiscovered: Bool {
+        !discovery.discoveredDecks.isEmpty || !discovery.discoveredSwitchers.isEmpty
+            || !discovery.discoveredCloudStores.isEmpty
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -21,15 +38,19 @@ struct DashboardView: View {
                 Divider()
             }
 
-            if totalDevices == 0 {
+            if totalDevices == 0 && !hasDiscovered {
                 emptyState
             } else {
-                deckGrid
+                deviceGrid
             }
-            
+
             Divider()
             actionBar
         }
+        .sheet(isPresented: $showingAddDeck) { DeckEditSheet(deck: nil) }
+        .sheet(isPresented: $showingAddSwitcher) { SwitcherEditSheet(switcher: nil) }
+        .sheet(isPresented: $showingAddCloudStore) { CloudStoreEditSheet(store: nil) }
+        .onAppear { monitor.start() }
     }
 
     // MARK: - Mount error banner
@@ -64,7 +85,7 @@ struct DashboardView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Sync Dashboard").font(.title2).bold()
+                    Text("Dashboard").font(.title2).bold()
                     Text("\(appState.hyperDecks.count) decks · \(appState.switchers.count) switchers · \(appState.cloudStores.count) cloud stores")
                         .font(.subheadline).foregroundStyle(.secondary)
                 }
@@ -82,6 +103,16 @@ struct DashboardView: View {
                         Text("Idle").font(.subheadline).foregroundStyle(.secondary)
                     }
                 }
+
+                scanButton
+
+                Menu {
+                    Button("HyperDeck") { showingAddDeck = true }
+                    Button("ATEM Switcher") { showingAddSwitcher = true }
+                    Button("Cloud Store") { showingAddCloudStore = true }
+                } label: {
+                    Label("Add Device", systemImage: "plus")
+                }.buttonStyle(.borderedProminent)
             }
 
             if let start = appState.runStartTime {
@@ -91,82 +122,92 @@ struct DashboardView: View {
         .padding()
     }
 
-    // MARK: - Deck Grid
-    private var deckGrid: some View {
+    @ViewBuilder private var scanButton: some View {
+        Button {
+            if discovery.isScanning { discovery.stopScanning() }
+            else { discovery.startScanning() }
+        } label: {
+            if discovery.isScanning {
+                Label("Scanning…", systemImage: "antenna.radiowaves.left.and.right")
+                    .symbolEffect(.pulse)
+            } else {
+                Label("Scan Network", systemImage: "antenna.radiowaves.left.and.right")
+            }
+        }
+    }
+
+    // MARK: - Device Grid
+    private var deviceGrid: some View {
         ScrollView {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 270))], spacing: 16) {
-                ForEach(appState.hyperDecks) { deck in
-                    DeckCardView(deck: deck)
+            VStack(alignment: .leading, spacing: 20) {
+                if !appState.hyperDecks.isEmpty {
+                    sectionHeader("HyperDecks")
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 270))], spacing: 16) {
+                        ForEach(appState.hyperDecks) { deck in
+                            DeckCardView(deck: deck)
+                        }
+                    }
                 }
+
+                if !appState.switchers.isEmpty {
+                    sectionHeader("ATEM Switchers")
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 270))], spacing: 16) {
+                        ForEach(appState.switchers) { switcher in
+                            SwitcherCardView(switcher: switcher)
+                        }
+                    }
+                }
+
+                if !appState.cloudStores.isEmpty {
+                    sectionHeader("Cloud Stores")
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 270))], spacing: 16) {
+                        ForEach(appState.cloudStores) { store in
+                            CloudStoreCardView(store: store)
+                        }
+                    }
+                }
+
+                discoveredSection
             }
             .padding()
         }
     }
 
-    // MARK: - Task panel
-    private var taskPanel: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // Panel header with overall progress
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Text("Active Tasks").font(.headline)
-                    Spacer()
-                    if !appState.isRunning && !appState.activeTasks.isEmpty {
-                        Button("Clear") { appState.activeTasks.removeAll() }
-                            .buttonStyle(.borderless)
-                            .font(.caption)
+    private func sectionHeader(_ title: String) -> some View {
+        Text(title).font(.headline).foregroundStyle(.secondary)
+    }
+
+    // MARK: - Discovered on network
+    @ViewBuilder private var discoveredSection: some View {
+        let newDecks = discovery.discoveredDecks.filter { d in
+            !appState.hyperDecks.contains(where: { $0.ipAddress == d.ipAddress })
+        }
+        let newSwitchers = discovery.discoveredSwitchers.filter { s in
+            !appState.switchers.contains(where: { $0.ipAddress == s.ipAddress })
+        }
+        let newStores = discovery.discoveredCloudStores.filter { s in
+            !appState.cloudStores.contains(where: { $0.ipAddress == s.ipAddress })
+        }
+
+        if !newDecks.isEmpty || !newSwitchers.isEmpty || !newStores.isEmpty {
+            sectionHeader("Discovered on Network")
+            VStack(spacing: 8) {
+                ForEach(newDecks) { deck in
+                    DiscoveredDeviceRow(name: deck.name, ip: deck.ipAddress, icon: "server.rack") {
+                        appState.addDeck(deck)
                     }
                 }
-                if !appState.activeTasks.isEmpty {
-                    let total = Double(appState.activeTasks.count)
-                    let done  = Double(doneCount)
-                    ProgressView(value: done, total: total).tint(.blue)
-                    Text("\(doneCount) of \(appState.activeTasks.count) files complete")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-            }
-            .padding()
-
-            Divider()
-
-            // Per-file task list
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    ForEach(appState.activeTasks) { task in
-                        TaskRow(task: task)
-                        Divider()
+                ForEach(newSwitchers) { s in
+                    DiscoveredDeviceRow(name: s.name, ip: s.ipAddress, icon: "switch.2") {
+                        appState.addSwitcher(s)
                     }
                 }
-            }
-
-            Divider()
-
-            // Log tail
-            VStack(alignment: .leading, spacing: 0) {
-                Text("Log").font(.caption).bold()
-                    .foregroundStyle(.secondary).padding([.horizontal, .top], 8)
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 1) {
-                            ForEach(Array(appState.pipelineLog.enumerated()), id: \.offset) { i, line in
-                                Text(line)
-                                    .font(.system(size: 10, design: .monospaced))
-                                    .foregroundStyle(.secondary)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .id(i)
-                            }
-                        }
-                        .padding(.horizontal, 8).padding(.bottom, 8)
-                    }
-                    .onChange(of: appState.pipelineLog.count) {
-                        if let last = appState.pipelineLog.indices.last {
-                            proxy.scrollTo(last, anchor: .bottom)
-                        }
+                ForEach(newStores) { s in
+                    DiscoveredDeviceRow(name: s.name, ip: s.ipAddress, icon: "externaldrive.badge.wifi") {
+                        appState.addCloudStore(s)
                     }
                 }
             }
-            .frame(height: 140)
-            .background(Color(NSColor.textBackgroundColor))
         }
     }
 
@@ -175,10 +216,12 @@ struct DashboardView: View {
         VStack(spacing: 14) {
             Spacer()
             Image(systemName: "network").font(.system(size: 48)).foregroundStyle(.secondary)
-            Text("No Devices Configured").font(.title3).bold()
-            Text("Add HyperDecks, ATEM Switchers, or Cloud Stores in the Devices tab.")
+            Text("No Devices Added").font(.title3).bold()
+            Text("Scan the network or add a HyperDeck, ATEM Switcher, or Cloud Store.")
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
+            Button("Scan Network") { discovery.startScanning() }
+                .buttonStyle(.borderedProminent)
             Spacer()
         }
         .padding()

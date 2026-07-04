@@ -78,6 +78,7 @@ struct WorkflowStepConfigSheet: View {
                 TextField("{device}_{date}_{index}", text: $pattern)
                     .textFieldStyle(.roundedBorder)
             }
+            renamePreview
             VStack(alignment: .leading, spacing: 4) {
                 Text("Available tokens").font(.caption).bold()
                 ForEach(RenameToken.allCases, id: \.self) { token in
@@ -88,6 +89,40 @@ struct WorkflowStepConfigSheet: View {
                 }
             }
         }
+    }
+
+    /// Shows how the current pattern would rename a couple of example files,
+    /// so the person can see the result before running the workflow.
+    private var renamePreview: some View {
+        let examples = [
+            ("Clip0001.mov", 1),
+            ("Clip0002.mov", 2)
+        ]
+        return VStack(alignment: .leading, spacing: 6) {
+            Text("Preview").font(.caption).bold()
+            ForEach(examples, id: \.0) { original, index in
+                let newName = RenamePatternEngine.apply(
+                    pattern: pattern.isEmpty ? "{name}" : pattern,
+                    originalName: (original as NSString).deletingPathExtension,
+                    deviceName: "Stage Camera",
+                    index: index
+                )
+                HStack(spacing: 6) {
+                    Text(original)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                    Image(systemName: "arrow.right")
+                        .font(.caption2).foregroundStyle(.secondary)
+                    Text("\(newName).\((original as NSString).pathExtension)")
+                        .font(.system(.caption, design: .monospaced))
+                        .bold()
+                }
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(NSColor.controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
     }
 
     private var cleanupFields: some View {
