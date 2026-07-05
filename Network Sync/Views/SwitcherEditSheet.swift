@@ -1,5 +1,4 @@
 import SwiftUI
-import Network
 
 struct SwitcherEditSheet: View {
     @EnvironmentObject var appState: AppState
@@ -87,12 +86,7 @@ struct SwitcherEditSheet: View {
     private func testConnection() {
         isTesting = true; pingStatus = .unknown
         Task {
-            guard let port = NWEndpoint.Port(rawValue: BlackmagicSwitcher.controlPort) else {
-                isTesting = false; return
-            }
-            let conn = NWConnection(host: NWEndpoint.Host(ipAddress), port: port, using: .tcp)
-            conn.start(queue: .global())
-            pingStatus = await resolveConnectionStatus(conn)
+            pingStatus = await ATEMProbe.ping(host: ipAddress)
             isTesting = false
         }
     }

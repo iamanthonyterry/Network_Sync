@@ -435,7 +435,7 @@ struct StorageBrowserView: View {
                         Task {
                             let children = await loadChildren(for: node, device: device)
                             await MainActor.run {
-                                toggleInTree(&rootNodes, id: id, device: device, setChildren: children)
+                                _ = toggleInTree(&rootNodes, id: id, device: device, setChildren: children)
                             }
                         }
                         return true

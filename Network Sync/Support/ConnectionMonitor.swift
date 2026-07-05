@@ -15,6 +15,14 @@ final class ConnectionMonitor: ObservableObject {
     private var monitorTask: Task<Void, Never>?
     private let pollInterval: Duration = .seconds(5)
 
+    /// Consecutive failed polls per host. A single dropped packet (common
+    /// with the UDP-based ATEM probe, but possible on any flaky network)
+    /// shouldn't flash a badge to "Offline" and back — we only commit to
+    /// offline once a device fails this many polls in a row. Recovery to
+    /// online is always immediate, since a real response is unambiguous.
+    private var consecutiveFailures: [String: Int] = [:]
+    private let offlineThreshold = 2
+
     func status(for host: String) -> DeckStatus {
         statuses[host] ?? .unknown
     }
@@ -39,15 +47,29 @@ final class ConnectionMonitor: ObservableObject {
     /// e.g. from a manual "Refresh" button, without waiting for the next
     /// poll cycle.
     func pingNow(deck: HyperDeck) async {
-        statuses[deck.ipAddress] = await Self.checkDeck(deck)
+        apply(await Self.checkDeck(deck), for: deck.ipAddress)
     }
 
     func pingNow(store: CloudStore) async {
-        statuses[store.ipAddress] = await Self.checkCloudStore(store)
+        apply(await Self.checkCloudStore(store), for: store.ipAddress)
     }
 
     func pingNow(switcher: BlackmagicSwitcher) async {
-        statuses[switcher.ipAddress] = await Self.ping(host: switcher.ipAddress, port: BlackmagicSwitcher.controlPort)
+        apply(await ATEMProbe.ping(host: switcher.ipAddress), for: switcher.ipAddress)
+    }
+
+    /// Commits a poll result for a host, debouncing transient offline blips.
+    private func apply(_ result: DeckStatus, for host: String) {
+        guard result == .offline else {
+            consecutiveFailures[host] = 0
+            statuses[host] = result
+            return
+        }
+
+        let failures = (consecutiveFailures[host] ?? 0) + 1
+        consecutiveFailures[host] = failures
+        guard failures >= offlineThreshold else { return }
+        statuses[host] = .offline
     }
 
     // MARK: - Polling
@@ -60,6 +82,7 @@ final class ConnectionMonitor: ObservableObject {
 
         guard !(decks.isEmpty && switchers.isEmpty && stores.isEmpty) else {
             if !statuses.isEmpty { statuses.removeAll() }
+            if !consecutiveFailures.isEmpty { consecutiveFailures.removeAll() }
             return
         }
 
@@ -68,19 +91,28 @@ final class ConnectionMonitor: ObservableObject {
                 group.addTask { (deck.ipAddress, await Self.checkDeck(deck)) }
             }
             for switcher in switchers {
-                group.addTask { (switcher.ipAddress, await Self.ping(host: switcher.ipAddress, port: BlackmagicSwitcher.controlPort)) }
+                group.addTask { (switcher.ipAddress, await ATEMProbe.ping(host: switcher.ipAddress)) }
             }
             for store in stores {
                 group.addTask { (store.ipAddress, await Self.checkCloudStore(store)) }
             }
             for await (host, status) in group {
-                statuses[host] = status
+                apply(status, for: host)
             }
         }
 
         // Drop entries for devices that were removed since the last poll.
+        // Only touches the dictionaries when there's actually something
+        // stale, so an unchanged device list never triggers a redundant
+        // @Published update (and the redraw that comes with it).
         let liveHosts = Set(decks.map(\.ipAddress) + switchers.map(\.ipAddress) + stores.map(\.ipAddress))
-        statuses = statuses.filter { liveHosts.contains($0.key) }
+        let staleHosts = Set(statuses.keys).subtracting(liveHosts)
+        if !staleHosts.isEmpty {
+            for host in staleHosts {
+                statuses.removeValue(forKey: host)
+                consecutiveFailures.removeValue(forKey: host)
+            }
+        }
     }
 
     // MARK: - Per-device checks

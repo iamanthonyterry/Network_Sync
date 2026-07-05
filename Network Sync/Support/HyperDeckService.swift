@@ -72,9 +72,9 @@ final class HyperDeckService: ObservableObject {
 
     /// Convenience: create a one-shot connection, format, and discard.
     static func formatDrive(deck: HyperDeck, filesystem: String = "HFS+") async throws {
-        let service = await HyperDeckService(host: deck.ipAddress)
+        let service = HyperDeckService(host: deck.ipAddress)
         await service.formatDrive(filesystem: filesystem)
-        if let error = await service.lastError {
+        if let error = service.lastError {
             throw NSError(domain: "HyperDeckService", code: 1,
                           userInfo: [NSLocalizedDescriptionKey: error])
         }
