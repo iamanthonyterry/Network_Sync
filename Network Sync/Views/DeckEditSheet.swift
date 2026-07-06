@@ -13,10 +13,13 @@ struct DeckEditSheet: View {
     @State private var password        = ""
     @State private var cloudStoreID: UUID? = nil   // nil = global destination
     @State private var cloudStorePath  = ""
+    @State private var capacityText    = ""
     @State private var showFolderPicker = false
     @State private var showPathPicker  = false
     @State private var pingStatus: DeckStatus = .unknown
     @State private var isTesting       = false
+    @State private var isCheckingBrowseAvailability = false
+    @State private var browseAvailable = false
 
     init(deck: HyperDeck?) {
         existingDeck = deck
@@ -27,6 +30,7 @@ struct DeckEditSheet: View {
         _password       = State(initialValue: deck?.password       ?? "")
         _cloudStoreID   = State(initialValue: deck?.cloudStoreID)
         _cloudStorePath = State(initialValue: deck?.cloudStorePath ?? "")
+        _capacityText   = State(initialValue: deck?.capacityGB.map { String(format: "%g", $0) } ?? "")
     }
 
     var canSave: Bool { !name.isEmpty && !ipAddress.isEmpty }
@@ -64,15 +68,34 @@ struct DeckEditSheet: View {
                         HStack(spacing: 8) {
                             TextField("usb/DriveName", text: $remotePath)
                                 .textFieldStyle(.roundedBorder)
-                            Button {
-                                showPathPicker = true
-                            } label: {
-                                Label("Browse…", systemImage: "folder")
+                            if isCheckingBrowseAvailability {
+                                ProgressView().controlSize(.small)
+                            } else if browseAvailable {
+                                Button {
+                                    showPathPicker = true
+                                } label: {
+                                    Label("Browse…", systemImage: "folder")
+                                }
+                                .buttonStyle(.bordered)
                             }
-                            .buttonStyle(.bordered)
-                            .disabled(ipAddress.isEmpty)
                         }
                     }
+                    if !browseAvailable && !isCheckingBrowseAvailability && !ipAddress.isEmpty {
+                        Text("Enter the correct IP, username, and password to browse folders.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    LabeledContent("Media Capacity") {
+                        HStack(spacing: 6) {
+                            TextField("e.g. 500", text: $capacityText)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 80)
+                            Text("GB")
+                        }
+                    }
+                    Text("The deck can't report its disk size over the network, so enter it here to show a used/total storage indicator on the Storage page.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
 
                 // MARK: Credentials
@@ -179,6 +202,9 @@ struct DeckEditSheet: View {
             .formStyle(.grouped)
         }
         .frame(width: 480)
+        .task(id: BrowseProbeKey(ip: ipAddress, user: username, pass: password)) {
+            await refreshBrowseAvailability()
+        }
         .sheet(isPresented: $showPathPicker) {
             DeckPathPickerSheet(ipAddress: ipAddress, username: username, password: password) { path in
                 remotePath = path
@@ -196,16 +222,19 @@ struct DeckEditSheet: View {
 
     // MARK: - Save
     private func save() {
+        let capacity = Double(capacityText.trimmingCharacters(in: .whitespaces))
         if var d = existingDeck {
             d.name = name; d.ipAddress = ipAddress
             d.remotePath = remotePath; d.username = username; d.password = password
             d.cloudStoreID = cloudStoreID; d.cloudStorePath = cloudStorePath
+            d.capacityGB = capacity
             appState.updateDeck(d)
         } else {
             appState.addDeck(HyperDeck(
                 name: name, ipAddress: ipAddress, remotePath: remotePath,
                 username: username, password: password,
-                cloudStoreID: cloudStoreID, cloudStorePath: cloudStorePath
+                cloudStoreID: cloudStoreID, cloudStorePath: cloudStorePath,
+                capacityGB: capacity
             ))
         }
         dismiss()
@@ -250,5 +279,38 @@ struct DeckEditSheet: View {
             }
             isTesting = false
         }
+    }
+
+    // MARK: - Browse availability
+
+    /// Debounces on IP/username/password so we're not hammering the deck
+    /// with an FTP probe on every keystroke.
+    private struct BrowseProbeKey: Equatable {
+        let ip: String, user: String, pass: String
+    }
+
+    /// Only let the user browse remote folders once we've confirmed the
+    /// login works *and* the deck actually has folders to show.
+    private func refreshBrowseAvailability() async {
+        guard !ipAddress.isEmpty else {
+            browseAvailable = false
+            return
+        }
+        isCheckingBrowseAvailability = true
+        defer { isCheckingBrowseAvailability = false }
+
+        try? await Task.sleep(for: .milliseconds(500))
+        guard !Task.isCancelled else { return }
+
+        let probeDeck = HyperDeck(name: "", ipAddress: ipAddress, remotePath: "",
+                                   username: username, password: password)
+        guard case .authorized = await FTPService.probeAuth(on: probeDeck) else {
+            browseAvailable = false
+            return
+        }
+        guard !Task.isCancelled else { return }
+
+        let entries = await FTPService.listAllFiles(on: probeDeck, path: "")
+        browseAvailable = entries.contains { $0.isDirectory }
     }
 }

@@ -19,6 +19,12 @@ struct HyperDeck: Identifiable, Codable, Hashable {
     var cloudStoreID: UUID? = nil
     /// Subfolder within the cloud store volume. Empty = volume root.
     var cloudStorePath: String = ""
+
+    /// Capacity of the deck's installed media, in gigabytes. The HyperDeck
+    /// Ethernet protocol has no command that reports raw disk capacity (only
+    /// an estimated recording-time-remaining figure), so this is entered by
+    /// the user and used purely to show a used/total storage indicator.
+    var capacityGB: Double? = nil
 }
 
 // MARK: - Blackmagic Switcher (ATEM)

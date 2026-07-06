@@ -50,10 +50,13 @@ struct FTPService {
             .addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? path
         let url = "ftp://\(deck.ipAddress)/\(encoded)/"
 
+        // No --list-only here: that returns bare filenames only. We want the
+        // full "ls -l" style listing so we can read real file sizes and tell
+        // directories from files without guessing from the name.
         let output = await runProcess(
             executable: "/usr/bin/curl",
             args: ["--user", "\(deck.username):\(deck.password)",
-                   "--connect-timeout", "5", "-s", "--list-only", url]
+                   "--connect-timeout", "5", "-s", url]
         )
         return parseFTPListing(from: output, basePath: path, deck: deck)
     }
@@ -205,18 +208,32 @@ struct FTPService {
 
     // MARK: - Helpers
 
-    /// Parses a --list-only FTP response (one filename per line) into FTPEntry values.
-    /// Uses a second curl call with -v to get size/date for each entry when available,
-    /// but falls back to lightweight name-only parsing for speed.
+    /// Parses a Unix "ls -l" style FTP directory listing into FTPEntry values,
+    /// reading the real file size and directory flag from each line, e.g.:
+    ///   drwxrwxrwx 1 user group        0 Jan  1  2024 folder
+    ///   -rwxrwxrwx 1 user group   123456 Jan  1  2024 clip0001.mov
+    /// Falls back to bare-filename parsing for servers that don't return the
+    /// long format (size is unknown in that case).
     private static func parseFTPListing(from output: String, basePath: String, deck: HyperDeck) -> [FTPEntry] {
         output
             .replacingOccurrences(of: "\r", with: "")
             .components(separatedBy: "\n")
             .compactMap { line -> FTPEntry? in
-                let name = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                guard !trimmed.isEmpty else { return nil }
+
+                let fields = trimmed.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
+                guard fields.count >= 9, let permissions = fields.first else {
+                    guard trimmed != ".", trimmed != ".." else { return nil }
+                    let isDirectory = !trimmed.contains(".")
+                    return FTPEntry(name: trimmed, isDirectory: isDirectory, size: 0, modified: .distantPast)
+                }
+
+                let name = fields[8...].joined(separator: " ")
                 guard !name.isEmpty, name != ".", name != ".." else { return nil }
-                let isDirectory = !name.contains(".")   // simple heuristic; HyperDeck dirs have no extension
-                return FTPEntry(name: name, isDirectory: isDirectory, size: 0, modified: .distantPast)
+                let isDirectory = permissions.hasPrefix("d")
+                let size = Int64(fields[4]) ?? 0
+                return FTPEntry(name: name, isDirectory: isDirectory, size: size, modified: .distantPast)
             }
     }
 
