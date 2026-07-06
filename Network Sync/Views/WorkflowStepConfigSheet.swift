@@ -11,6 +11,8 @@ struct WorkflowStepConfigSheet: View {
     @State private var deleteOriginal = true
     @State private var pattern = ""
     @State private var retentionDays = 30
+    @State private var stopRecordingAutomatically = false
+    @State private var stopAfterMinutes = 5
 
     var body: some View {
         VStack(spacing: 0) {
@@ -32,6 +34,9 @@ struct WorkflowStepConfigSheet: View {
                     .font(.caption).foregroundStyle(.secondary)
 
                 switch step.kind {
+                case .record:
+                    recordFields
+
                 case .sync:
                     Text("No configuration needed — downloads any files not already synced.")
                         .font(.callout).foregroundStyle(.secondary)
@@ -58,6 +63,21 @@ struct WorkflowStepConfigSheet: View {
     }
 
     // MARK: - Field groups
+
+    private var recordFields: some View {
+        Group {
+            Toggle("Stop recording automatically", isOn: $stopRecordingAutomatically)
+            if stopRecordingAutomatically {
+                Stepper(
+                    "\(stopAfterMinutes) minute\(stopAfterMinutes == 1 ? "" : "s")",
+                    value: $stopAfterMinutes, in: 1...240
+                )
+            } else {
+                Text("Recording keeps rolling while the workflow moves on to its next step.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
 
     private var convertFields: some View {
         Group {
@@ -135,6 +155,11 @@ struct WorkflowStepConfigSheet: View {
 
     private func load() {
         switch step.action {
+        case .record(let stopAfterMinutes):
+            if let minutes = stopAfterMinutes {
+                stopRecordingAutomatically = true
+                stopAfterMinutes = minutes
+            }
         case .sync, .format:
             break
         case .convert(let p, let del):
@@ -148,6 +173,7 @@ struct WorkflowStepConfigSheet: View {
 
     private func save() {
         switch step.kind {
+        case .record:  step.action = .record(stopAfterMinutes: stopRecordingAutomatically ? stopAfterMinutes : nil)
         case .sync:    step.action = .sync
         case .convert: step.action = .convert(preset: preset, deleteOriginal: deleteOriginal)
         case .rename:  step.action = .rename(pattern: pattern.isEmpty ? "{name}" : pattern)

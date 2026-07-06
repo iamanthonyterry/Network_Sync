@@ -4,12 +4,13 @@ import SwiftUI
 // MARK: - Step Kind
 // The catalog of step types users can drag into a workflow.
 enum StepKind: String, Codable, CaseIterable, Identifiable {
-    case sync, convert, rename, format, cleanup
+    case record, sync, convert, rename, format, cleanup
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
+        case .record:  return "Record"
         case .sync:    return "Sync"
         case .convert: return "Convert"
         case .rename:  return "Rename"
@@ -20,6 +21,7 @@ enum StepKind: String, Codable, CaseIterable, Identifiable {
 
     var subtitle: String {
         switch self {
+        case .record:  return "Start recording on the device"
         case .sync:    return "Download new files from the device"
         case .convert: return "Transcode files to MP4"
         case .rename:  return "Rename files using a pattern"
@@ -30,6 +32,7 @@ enum StepKind: String, Codable, CaseIterable, Identifiable {
 
     var icon: String {
         switch self {
+        case .record:  return "record.circle"
         case .sync:    return "arrow.down.circle"
         case .convert: return "film.stack"
         case .rename:  return "textformat"
@@ -40,6 +43,7 @@ enum StepKind: String, Codable, CaseIterable, Identifiable {
 
     var color: Color {
         switch self {
+        case .record:  return .red
         case .sync:    return .blue
         case .convert: return .orange
         case .rename:  return .purple
@@ -52,6 +56,7 @@ enum StepKind: String, Codable, CaseIterable, Identifiable {
 // MARK: - Step Action
 // Each case carries only the configuration that step needs.
 enum StepAction: Codable, Hashable {
+    case record(stopAfterMinutes: Int?)
     case sync
     case convert(preset: ConversionSettings.FFmpegPreset, deleteOriginal: Bool)
     case rename(pattern: String)
@@ -60,6 +65,7 @@ enum StepAction: Codable, Hashable {
 
     var kind: StepKind {
         switch self {
+        case .record:   return .record
         case .sync:     return .sync
         case .convert:  return .convert
         case .rename:   return .rename
@@ -70,6 +76,7 @@ enum StepAction: Codable, Hashable {
 
     static func defaultAction(for kind: StepKind) -> StepAction {
         switch kind {
+        case .record:  return .record(stopAfterMinutes: nil)
         case .sync:    return .sync
         case .convert: return .convert(preset: .fast, deleteOriginal: true)
         case .rename:  return .rename(pattern: "{device}_{date}_{index}")
@@ -81,6 +88,11 @@ enum StepAction: Codable, Hashable {
     /// One-line summary shown under the step title in the editor.
     var summary: String {
         switch self {
+        case .record(let stopAfterMinutes):
+            if let minutes = stopAfterMinutes {
+                return "Records, then stops after \(minutes) minute\(minutes == 1 ? "" : "s")"
+            }
+            return "Starts recording and continues to the next step"
         case .sync:
             return "Downloads any new .mov files"
         case .convert(let preset, let deleteOriginal):
@@ -166,7 +178,7 @@ struct Workflow: Identifiable, Codable, Hashable {
 
     /// True if any step needs the shared sync destination mounted.
     var needsDestinationMount: Bool {
-        steps.contains { $0.kind != .format }
+        steps.contains { $0.kind != .format && $0.kind != .record }
     }
 }
 

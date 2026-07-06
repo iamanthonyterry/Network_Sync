@@ -95,6 +95,8 @@ final class WorkflowEngine: ObservableObject {
 
     private func execute(_ step: WorkflowStep, context: inout StepContext) async {
         switch step.action {
+        case .record(let stopAfterMinutes):
+            await runRecord(context: &context, stopAfterMinutes: stopAfterMinutes)
         case .sync:
             await runSync(context: &context)
         case .convert(let preset, let deleteOriginal):
@@ -281,6 +283,36 @@ final class WorkflowEngine: ObservableObject {
         }
 
         context.files = renamed
+    }
+
+    // MARK: - Record step
+
+    private func runRecord(context: inout StepContext, stopAfterMinutes: Int?) async {
+        let deck = context.deck
+        appState.log("  ⏺ Starting recording on \(deck.name)...")
+
+        let service = HyperDeckService(host: deck.ipAddress)
+        await service.record()
+        if let error = service.lastError {
+            appState.log("  ❌ \(deck.name) failed to start recording: \(error)")
+            appState.currentRunErrors += 1
+            return
+        }
+        appState.log("  ✅ \(deck.name) is recording")
+
+        guard let minutes = stopAfterMinutes else { return }
+
+        appState.log("  ⏳ Will stop \(deck.name) after \(minutes) minute\(minutes == 1 ? "" : "s")...")
+        try? await Task.sleep(for: .seconds(minutes * 60))
+        guard appState.isRunning else { return }
+
+        await service.stop()
+        if let error = service.lastError {
+            appState.log("  ❌ \(deck.name) failed to stop recording: \(error)")
+            appState.currentRunErrors += 1
+        } else {
+            appState.log("  ⏹ \(deck.name) stopped recording")
+        }
     }
 
     // MARK: - Format step

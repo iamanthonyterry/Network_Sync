@@ -94,7 +94,7 @@ struct WorkflowsView: View {
             Spacer()
             Image(systemName: "flowchart").font(.system(size: 48)).foregroundStyle(.secondary)
             Text("No Workflows Yet").font(.title3).bold()
-            Text("Build a workflow from steps like Sync, Convert, Rename, Format, and Cleanup — then run it manually or on a schedule.")
+            Text("Build a workflow from steps like Record, Sync, Convert, Rename, Format, and Cleanup — then run it manually or on a schedule.")
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 360)
