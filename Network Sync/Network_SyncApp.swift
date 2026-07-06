@@ -26,6 +26,12 @@ struct Network_SyncApp: App {
         .defaultSize(width: 1100, height: 700)
         .commands {
             CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") {
+                    UpdateService.shared.checkForUpdates()
+                }
+                .disabled(!UpdateService.shared.canCheckForUpdates)
+            }
+            CommandGroup(after: .appInfo) {
                 Button("Start Sync & Transcode") {
                     Task { await PipelineEngine.shared.runAll() }
                 }

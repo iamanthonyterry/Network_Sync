@@ -2,17 +2,13 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <!-- App Sandbox is required for Mac App Store distribution.
-         SMBService mounts via NetFSMountURLSync with a default (nil)
-         mount path, which is sandbox-safe — it's only *custom* mount
-         paths and raw mount(2)/osascript that the sandbox blocks. -->
-    <key>com.apple.security.app-sandbox</key>
-    <true/>
+    <!-- App Sandbox is disabled: this app is distributed directly (GitHub
+         Releases) with Sparkle auto-updates, not through the Mac App Store.
+         Sparkle needs to replace the app bundle on disk, which a sandboxed
+         app cannot do without a separate installer XPC service. -->
     <key>com.apple.security.network.client</key>
     <true/>
     <key>com.apple.security.network.server</key>
-    <true/>
-    <key>com.apple.security.files.user-selected.read-write</key>
     <true/>
 </dict>
 </plist>

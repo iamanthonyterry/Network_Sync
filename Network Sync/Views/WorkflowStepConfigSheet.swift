@@ -155,8 +155,8 @@ struct WorkflowStepConfigSheet: View {
 
     private func load() {
         switch step.action {
-        case .record(let stopAfterMinutes):
-            if let minutes = stopAfterMinutes {
+        case .record(let savedMinutes):
+            if let minutes = savedMinutes {
                 stopRecordingAutomatically = true
                 stopAfterMinutes = minutes
             }

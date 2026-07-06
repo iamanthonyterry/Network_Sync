@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		644D5A602FFC42C900204FD5 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 644D5A5F2FFC42C900204FD5 /* Sparkle */; };
 		64E3101C2FDB0EEF00BD0F01 /* UserNotifications.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 64E3101A2FDB0EEF00BD0F01 /* UserNotifications.framework */; };
 		64E3101D2FDB0EEF00BD0F01 /* UserNotificationsUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 64E3101B2FDB0EEF00BD0F01 /* UserNotificationsUI.framework */; };
 /* End PBXBuildFile section */
@@ -59,6 +60,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				644D5A602FFC42C900204FD5 /* Sparkle in Frameworks */,
 				64E3101D2FDB0EEF00BD0F01 /* UserNotificationsUI.framework in Frameworks */,
 				64E3101C2FDB0EEF00BD0F01 /* UserNotifications.framework in Frameworks */,
 			);
@@ -131,6 +133,7 @@
 			);
 			name = "Network Sync";
 			packageProductDependencies = (
+				644D5A5F2FFC42C900204FD5 /* Sparkle */,
 			);
 			productName = "Newtowk Sync";
 			productReference = 648E39C02FD6334E00EE3177 /* Network Sync.app */;
@@ -214,6 +217,9 @@
 			);
 			mainGroup = 648E39B72FD6334E00EE3177;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				644D5A5E2FFC40D300204FD5 /* XCRemoteSwiftPackageReference "Sparkle" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 648E39C12FD6334E00EE3177 /* Products */;
 			projectDirPath = "";
@@ -419,26 +425,16 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = BPZ4H86MC6;
-				ENABLE_APP_SANDBOX = YES;
+				DEVELOPMENT_TEAM = GAYT638PXY;
 				ENABLE_HARDENED_RUNTIME = YES;
-				ENABLE_INCOMING_NETWORK_CONNECTIONS = YES;
-				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				ENABLE_PREVIEWS = YES;
-				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
-				ENABLE_RESOURCE_ACCESS_BLUETOOTH = NO;
-				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
-				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
-				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
-				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
-				ENABLE_RESOURCE_ACCESS_PRINTING = NO;
-				ENABLE_RESOURCE_ACCESS_USB = NO;
 				ENABLE_USER_SELECTED_FILES = readwrite;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Newtowk-Sync-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "Network Sync";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Network Sync discovers HyperDecks, ATEM switchers, and cloud storage on your local network so it can control and sync with them.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -467,26 +463,16 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = BPZ4H86MC6;
-				ENABLE_APP_SANDBOX = YES;
+				DEVELOPMENT_TEAM = GAYT638PXY;
 				ENABLE_HARDENED_RUNTIME = YES;
-				ENABLE_INCOMING_NETWORK_CONNECTIONS = YES;
-				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				ENABLE_PREVIEWS = YES;
-				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
-				ENABLE_RESOURCE_ACCESS_BLUETOOTH = NO;
-				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
-				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
-				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
-				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
-				ENABLE_RESOURCE_ACCESS_PRINTING = NO;
-				ENABLE_RESOURCE_ACCESS_USB = NO;
 				ENABLE_USER_SELECTED_FILES = readwrite;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Newtowk-Sync-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "Network Sync";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Network Sync discovers HyperDecks, ATEM switchers, and cloud storage on your local network so it can control and sync with them.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -624,6 +610,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		644D5A5E2FFC40D300204FD5 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.9.4;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		644D5A5F2FFC42C900204FD5 /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 644D5A5E2FFC40D300204FD5 /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 648E39B82FD6334E00EE3177 /* Project object */;
 }

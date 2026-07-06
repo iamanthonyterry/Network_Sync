@@ -17,8 +17,6 @@
 	</array>
 	<key>GIDClientID</key>
 	<string>182690981022-erotfhq87oe6ubun28aetpknok9b06b4.apps.googleusercontent.com</string>
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>Network Sync discovers HyperDecks, ATEM switchers, and cloud storage on your local network so it can control and sync with them.</string>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_ftp._tcp</string>
@@ -29,5 +27,13 @@
 	<array>
 		<dict/>
 	</array>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUFeedURL</key>
+	<string>https://github.com/iamanthonyterry/Network_Sync/releases/latest/download/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>dGCiF9ED+wvdNzGCNzCqL9QZOPqpXFMoMBvMLhLqYZY=</string>
+	<key>SUScheduledCheckInterval</key>
+	<integer>86400</integer>
 </dict>
 </plist>

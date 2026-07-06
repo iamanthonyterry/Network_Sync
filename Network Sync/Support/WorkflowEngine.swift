@@ -289,16 +289,27 @@ final class WorkflowEngine: ObservableObject {
 
     private func runRecord(context: inout StepContext, stopAfterMinutes: Int?) async {
         let deck = context.deck
-        appState.log("  ⏺ Starting recording on \(deck.name)...")
-
         let service = HyperDeckService(host: deck.ipAddress)
-        await service.record()
-        if let error = service.lastError {
-            appState.log("  ❌ \(deck.name) failed to start recording: \(error)")
+
+        await service.fetchTransport()
+        guard service.isConnected else {
+            appState.log("  ❌ \(deck.name) is not reachable — skipping record step")
             appState.currentRunErrors += 1
             return
         }
-        appState.log("  ✅ \(deck.name) is recording")
+
+        if service.transport == .recording {
+            appState.log("  ⏺ \(deck.name) is already recording")
+        } else {
+            appState.log("  ⏺ Starting recording on \(deck.name)...")
+            await service.record()
+            if let error = service.lastError {
+                appState.log("  ❌ \(deck.name) failed to start recording: \(error)")
+                appState.currentRunErrors += 1
+                return
+            }
+            appState.log("  ✅ \(deck.name) is recording")
+        }
 
         guard let minutes = stopAfterMinutes else { return }
 
