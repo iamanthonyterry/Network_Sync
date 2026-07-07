@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Network Sync release script
-# Usage: ./release.sh 1.2
+# Usage: ./release.sh 0.0.1-alpha
 # Bumps MARKETING_VERSION, archives, exports, notarizes, staples, zips,
 # and generates the Sparkle appcast — ready to upload to a GitHub Release.
 #
@@ -44,13 +44,19 @@ echo "==> Archiving"
 xcodebuild archive \
   -scheme "$SCHEME" \
   -archivePath "$ARCHIVE_PATH" \
-  -configuration Release
+  -configuration Release \
+  -destination "generic/platform=macOS" \
+  DEVELOPMENT_TEAM=GAYT638PXY \
+  CODE_SIGN_IDENTITY="Developer ID Application" \
+  CODE_SIGN_STYLE=Manual \
+  -allowProvisioningUpdates
 
 echo "==> Exporting (Developer ID)"
 xcodebuild -exportArchive \
   -archivePath "$ARCHIVE_PATH" \
   -exportPath "$EXPORT_PATH" \
-  -exportOptionsPlist exportOptions.plist
+  -exportOptionsPlist exportOptions.plist \
+  -allowProvisioningUpdates
 
 echo "==> Notarizing"
 ditto -c -k --keepParent "$APP_PATH" "$BUILD_DIR/NetworkSync-notarize.zip"

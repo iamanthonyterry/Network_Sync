@@ -23,7 +23,7 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0</string>
+	<string>0.0.1-alpha</string>
 	<key>CFBundleSupportedPlatforms</key>
 	<array>
 		<string>MacOSX</string>
@@ -42,7 +42,7 @@
 		</dict>
 	</array>
 	<key>CFBundleVersion</key>
-	<string>202607070904</string>
+	<string>202607071429</string>
 	<key>DTCompiler</key>
 	<string>com.apple.compilers.llvm.clang.1_0</string>
 	<key>DTPlatformBuild</key>
@@ -56,9 +56,9 @@
 	<key>DTSDKName</key>
 	<string>macosx26.5</string>
 	<key>DTXcode</key>
-	<string>2650</string>
+	<string>2660</string>
 	<key>DTXcodeBuild</key>
-	<string>17F42</string>
+	<string>17F113</string>
 	<key>GIDClientID</key>
 	<string>182690981022-erotfhq87oe6ubun28aetpknok9b06b4.apps.googleusercontent.com</string>
 	<key>LSApplicationCategoryType</key>
@@ -82,7 +82,7 @@
 	<key>SUFeedURL</key>
 	<string>https://github.com/iamanthonyterry/Network_Sync/releases/latest/download/appcast.xml</string>
 	<key>SUPublicEDKey</key>
-	<string>dGCiF9ED+wvdNzGCNzCqL9QZOPqpXFMoMBvMLhLqYZY=</string>
+	<string>IdVQPAGOXjruuLtPzqy1ZTI6lbSyuAm/aXY5V4lx7ws=</string>
 	<key>SUScheduledCheckInterval</key>
 	<integer>86400</integer>
 </dict>

@@ -1,0 +1,57 @@
+# macOS
+
+.DS_Store
+
+# Xcode
+
+DerivedData/
+
+build/
+
+Build/
+
+*.xcworkspace/xcuserdata/
+
+*.xcuserdatad/
+
+*.xcuserstate
+
+# Swift Package Manager
+
+.build/
+
+Packages/
+
+Package.resolved
+
+# Archives
+
+*.xcarchive
+
+# App packaging
+
+*.dmg
+
+*.pkg
+
+*.zip
+
+# Logs
+
+*.log
+
+# Environment files
+
+.env
+
+.env.*
+
+# Scripts
+
+release.sh
+
+# Temporary files
+
+tmp/
+
+temp/

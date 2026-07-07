@@ -10,11 +10,11 @@
 		</data>
 		<key>Resources/Assets.car</key>
 		<data>
-		p31RzvOLqXbFEVigWI55uh1oJ6s=
+		OFCHqTvkfXtzKnZCzuW5uR4D5QE=
 		</data>
 		<key>Resources/Network_Sync.momd/Network_Sync.mom</key>
 		<data>
-		nPKDelC0s+hS5+0jyoDeIPfdM40=
+		6lKd0TTy6YJ4sL7vddV9LVN4wBc=
 		</data>
 		<key>Resources/Network_Sync.momd/Network_Sync.omo</key>
 		<data>
@@ -31,10 +31,10 @@
 		<dict>
 			<key>cdhash</key>
 			<data>
-			iS0O3mIbNpgpX8KzR7knB+tr0HI=
+			fxx85rmU3S/PTgOxbP9pJ/LkwK0=
 			</data>
 			<key>requirement</key>
-			<string>identifier "org.sparkle-project.Sparkle" and anchor apple generic and certificate leaf[subject.CN] = "Apple Development: Anthony Terry (6BPJTFZJST)" and certificate 1[field.1.2.840.113635.100.6.2.1] /* exists */</string>
+			<string>anchor apple generic and identifier "org.sparkle-project.Sparkle" and (certificate leaf[field.1.2.840.113635.100.6.1.9] /* exists */ or certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = GAYT638PXY)</string>
 		</dict>
 		<key>Resources/AppIcon.icns</key>
 		<dict>
@@ -47,14 +47,14 @@
 		<dict>
 			<key>hash2</key>
 			<data>
-			EnVpfFbANWbVdNpBQrhASrXntcCXRhZSI0vJCV1KpuY=
+			mVrisDLvp33/x2pN20rrE+cAOTkwP2mgRnBDP/+yZms=
 			</data>
 		</dict>
 		<key>Resources/Network_Sync.momd/Network_Sync.mom</key>
 		<dict>
 			<key>hash2</key>
 			<data>
-			ToJAdVgUql8LvD4XECRZUFnxtYZ1cno5GquiJiUCZgY=
+			18OTo6kUjeXpzyI6Pyxac8BQWYdraKm6hDoFU/E+kPY=
 			</data>
 		</dict>
 		<key>Resources/Network_Sync.momd/Network_Sync.omo</key>

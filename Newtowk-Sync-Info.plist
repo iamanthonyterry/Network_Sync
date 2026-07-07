@@ -32,7 +32,7 @@
 	<key>SUFeedURL</key>
 	<string>https://github.com/iamanthonyterry/Network_Sync/releases/latest/download/appcast.xml</string>
 	<key>SUPublicEDKey</key>
-	<string>dGCiF9ED+wvdNzGCNzCqL9QZOPqpXFMoMBvMLhLqYZY=</string>
+	<string>IdVQPAGOXjruuLtPzqy1ZTI6lbSyuAm/aXY5V4lx7ws=</string>
 	<key>SUScheduledCheckInterval</key>
 	<integer>86400</integer>
 </dict>

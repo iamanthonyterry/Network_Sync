@@ -14,18 +14,18 @@
 		<key>CFBundleIdentifier</key>
 		<string>com.ROSESASHUMANS.Newtowk-Sync</string>
 		<key>CFBundleShortVersionString</key>
-		<string>1.0</string>
+		<string>0.0.1-alpha</string>
 		<key>CFBundleVersion</key>
-		<string>202607070904</string>
+		<string>202607071429</string>
 		<key>SigningIdentity</key>
-		<string>Apple Development: Anthony Terry (6BPJTFZJST)</string>
+		<string>Developer ID Application: Roses as Humans LLC (GAYT638PXY)</string>
 		<key>Team</key>
 		<string>GAYT638PXY</string>
 	</dict>
 	<key>ArchiveVersion</key>
 	<integer>2</integer>
 	<key>CreationDate</key>
-	<date>2026-07-07T13:05:47Z</date>
+	<date>2026-07-07T18:30:00Z</date>
 	<key>Name</key>
 	<string>Network Sync</string>
 	<key>SchemeName</key>
