@@ -1,0 +1,15 @@
++ set -euo pipefail
++ '[' 1 -ne 1 ']'
++ VERSION=1.0
++ PROJECT='Network Sync.xcodeproj'
++ SCHEME='Network Sync'
++ BUILD_DIR=build
++ ARCHIVE_PATH=build/NetworkSync.xcarchive
++ EXPORT_PATH=build/export
++ APP_PATH='build/export/Network Sync.app'
++ ZIP_PATH=build/NetworkSync-1.0.zip
++ KEYCHAIN_PROFILE=AC_PASSWORD
++ echo '==> Cleaning previous build output'
+==> Cleaning previous build output
++ rm -rf build
++ mkdir -p build
