@@ -47,21 +47,10 @@ final class WorkflowEngine: ObservableObject {
             return
         }
 
-        if workflow.needsDestinationMount {
-            appState.log("Mounting \(appState.syncLocation.volumeName)...")
-            do {
-                let resolvedPath = try await mountSMBVolume(location: appState.syncLocation)
-                appState.syncLocation.resolvedMountPath = resolvedPath
-                appState.log("✅ Mounted at \(resolvedPath)")
-            } catch {
-                appState.log("❌ \(error.localizedDescription)")
-                appState.mountError = error.localizedDescription
-                appState.currentRunErrors += 1
-                appState.isRunning = false
-                appState.commitRun()
-                return
-            }
-        }
+        // Each deck may point at its own Cloud Store, or fall back to the
+        // shared global destination — mount every distinct store exactly
+        // once and reuse the resolved path for every deck that needs it.
+        var mountedPaths: [UUID?: String] = [:]
 
         for deck in decks {
             guard appState.isRunning else { break }
@@ -69,8 +58,25 @@ final class WorkflowEngine: ObservableObject {
                 appState.currentRunDecks.append(deck.name)
             }
 
-            let destDir = URL(fileURLWithPath: appState.syncLocation.recordsPath)
-                .appendingPathComponent(deck.name)
+            guard workflow.needsDestinationMount else {
+                var context = StepContext(deck: deck, destDir: URL(fileURLWithPath: "/dev/null"))
+                appState.log("— \(deck.name) —")
+                for step in workflow.steps {
+                    guard appState.isRunning else { break }
+                    await execute(step, context: &context)
+                }
+                continue
+            }
+
+            let destDir: URL
+            do {
+                destDir = try await resolveDestination(for: deck, cache: &mountedPaths)
+            } catch {
+                appState.log("❌ \(deck.name): \(error.localizedDescription)")
+                appState.mountError = error.localizedDescription
+                appState.currentRunErrors += 1
+                continue
+            }
             try? FileManager.default.createDirectory(at: destDir, withIntermediateDirectories: true)
 
             var context = StepContext(deck: deck, destDir: destDir)
@@ -412,6 +418,44 @@ final class WorkflowEngine: ObservableObject {
             username: location.username,
             password: location.password
         )
+    }
+
+    /// Resolves the destination folder for a single deck: its own assigned
+    /// Cloud Store + subfolder if one is set, otherwise the shared global
+    /// sync destination. Mounts are cached per store so decks sharing a
+    /// store (including "no store" → the global default) only mount once.
+    private func resolveDestination(
+        for deck: HyperDeck, cache mountedPaths: inout [UUID?: String]
+    ) async throws -> URL {
+        if let storeID = deck.cloudStoreID,
+           let store = appState.cloudStores.first(where: { $0.id == storeID }) {
+            let mountPath: String
+            if let cached = mountedPaths[storeID] {
+                mountPath = cached
+            } else {
+                appState.log("Mounting \(store.name)...")
+                mountPath = try await SMBService.mount(store: store)
+                mountedPaths[storeID] = mountPath
+                appState.log("✅ Mounted \(store.name) at \(mountPath)")
+            }
+            let base = URL(fileURLWithPath: mountPath)
+            let folder = deck.cloudStorePath.isEmpty ? base : base.appendingPathComponent(deck.cloudStorePath)
+            return folder.appendingPathComponent(deck.name)
+        }
+
+        // No store assigned — fall back to the shared global destination.
+        let mountPath: String
+        if let cached = mountedPaths[nil] {
+            mountPath = cached
+        } else {
+            appState.log("Mounting \(appState.syncLocation.volumeName)...")
+            mountPath = try await mountSMBVolume(location: appState.syncLocation)
+            appState.syncLocation.resolvedMountPath = mountPath
+            mountedPaths[nil] = mountPath
+            appState.log("✅ Mounted at \(mountPath)")
+        }
+        return URL(fileURLWithPath: appState.syncLocation.recordsPath)
+            .appendingPathComponent(deck.name)
     }
 
     @discardableResult

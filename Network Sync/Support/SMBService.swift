@@ -9,6 +9,8 @@ struct SMBMountError: LocalizedError {
 
     var errorDescription: String? {
         switch status {
+        case nil where volume.isEmpty:
+            return "No Cloud Store volume name is set for \(ip)."
         case 1:
             return "Could not mount \"\(volume)\" on \(ip). Check the username and password."
         case -6585, 64, 60:
@@ -34,6 +36,13 @@ enum SMBService {
         username: String,
         password: String
     ) async throws -> String {
+
+        // A blank volume name would make the "already mounted" check below
+        // collapse to "/Volumes/" itself, which always exists — that would
+        // falsely report success without ever mounting a share.
+        guard !volume.isEmpty else {
+            throw SMBMountError(ip: ip, volume: volume, status: nil)
+        }
 
         // 1. Already mounted at exact stored name?
         let exactPath = "/Volumes/\(volume)"
