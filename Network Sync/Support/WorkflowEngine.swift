@@ -438,9 +438,10 @@ final class WorkflowEngine: ObservableObject {
                 mountedPaths[storeID] = mountPath
                 appState.log("✅ Mounted \(store.name) at \(mountPath)")
             }
+            // Use the folder the user picked in Sync Destination exactly as
+            // selected — don't nest an extra deck-name subfolder inside it.
             let base = URL(fileURLWithPath: mountPath)
-            let folder = deck.cloudStorePath.isEmpty ? base : base.appendingPathComponent(deck.cloudStorePath)
-            return folder.appendingPathComponent(deck.name)
+            return deck.cloudStorePath.isEmpty ? base : base.appendingPathComponent(deck.cloudStorePath)
         }
 
         // No store assigned — fall back to the shared global destination.
