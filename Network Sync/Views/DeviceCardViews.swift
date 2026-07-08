@@ -10,13 +10,21 @@ struct StatusBadge: View {
             case .online: .green
             case .offline: .red
             case .unauthorized: .orange
-            default: .gray
+            case .pathNotFound: .orange
+            case .noMedia: .red
+            case .syncing: .blue
+            case .transcoding: .orange
+            case .unknown: .gray
         }
         let label: String = switch status {
             case .online: "Online"
             case .offline: "Offline"
             case .unauthorized: "Login Failed"
-            default: "Checking…"
+            case .pathNotFound: "Wrong Path"
+            case .noMedia: "No Drive"
+            case .syncing: "Syncing"
+            case .transcoding: "Converting"
+            case .unknown: "Checking…"
         }
 
         Text(label)

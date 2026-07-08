@@ -16,10 +16,13 @@ struct FTPService {
     // MARK: - Login / permission probe
 
     /// Result of attempting to actually log in and list the remote path,
-    /// as opposed to just checking that the port is open.
+    /// as opposed to just checking that the port is open. curl surfaces
+    /// these as two distinct exit codes, so we keep them distinct here too
+    /// instead of collapsing both into one generic "login failed" state.
     enum AuthResult: Sendable {
         case authorized
-        case unauthorized   // reachable, but login or permission denied
+        case unauthorized   // reachable, but username/password was rejected
+        case pathNotFound   // login succeeded, but the remote folder doesn't exist
         case inconclusive   // couldn't tell (timeout, network error, etc.)
     }
 
@@ -37,9 +40,10 @@ struct FTPService {
         )
 
         switch exitCode {
-        case 0:      return .authorized
-        case 9, 67:  return .unauthorized   // FTP access denied / login failed
-        default:     return .inconclusive
+        case 0:   return .authorized
+        case 67:  return .unauthorized   // CURLE_LOGIN_DENIED — bad username/password
+        case 9:   return .pathNotFound   // CURLE_REMOTE_ACCESS_DENIED — couldn't cwd into remotePath
+        default:  return .inconclusive
         }
     }
 
@@ -162,7 +166,7 @@ struct FTPService {
         let summary: String
         switch exitCode {
         case 7:  summary = "couldn't connect to deck"
-        case 9:  summary = "FTP access denied (check remote path)"
+        case 9:  summary = "remote folder not found — check the file location"
         case 28: summary = "connection timed out"
         case 67: summary = "FTP login failed (check username/password)"
         case 78: summary = "remote file not found"

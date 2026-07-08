@@ -118,13 +118,22 @@ final class ConnectionMonitor: ObservableObject {
     // MARK: - Per-device checks
 
     /// Reachability first, then — only if reachable — confirms the stored
-    /// login can actually list the deck's remote path.
+    /// login can actually list the deck's remote path, and finally that a
+    /// disk/SSD is actually installed. Each of these fails in a different,
+    /// user-actionable way, so they're kept as distinct statuses rather than
+    /// being collapsed into one generic error.
     private static func checkDeck(_ deck: HyperDeck) async -> DeckStatus {
         let reachable = await ping(host: deck.ipAddress, port: 9993)
         guard reachable == .online else { return reachable }
 
-        if case .unauthorized = await FTPService.probeAuth(on: deck) {
-            return .unauthorized
+        switch await FTPService.probeAuth(on: deck) {
+        case .unauthorized: return .unauthorized
+        case .pathNotFound: return .pathNotFound
+        case .authorized, .inconclusive: break
+        }
+
+        if await HyperDeckService.checkMediaPresent(host: deck.ipAddress) == false {
+            return .noMedia
         }
         return .online
     }

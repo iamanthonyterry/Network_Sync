@@ -555,6 +555,8 @@ private func statusBadge(_ status: DeckStatus) -> some View {
     case .online:       ("Online", .green)
     case .offline:      ("Offline", .red)
     case .unauthorized: ("Login Failed", .orange)
+    case .pathNotFound: ("Wrong Path", .orange)
+    case .noMedia:      ("No Drive", .red)
     case .syncing:      ("Syncing", .blue)
     case .transcoding:  ("Converting", .orange)
     }

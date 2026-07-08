@@ -196,8 +196,9 @@ struct WorkflowRun: Identifiable, Codable, Hashable {
     var duration: TimeInterval { finishedAt.timeIntervalSince(startedAt) }
     var durationFormatted: String {
         let s = Int(duration)
-        if s < 60 { return "\(s)s" }
-        let m = s / 60; let r = s % 60
-        return r == 0 ? "\(m)m" : "\(m)m \(r)s"
+        let h = s / 3600
+        let m = (s % 3600) / 60
+        let r = s % 60
+        return String(format: "%d:%02d:%02d", h, m, r)
     }
 }

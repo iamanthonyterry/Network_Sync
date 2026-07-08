@@ -100,9 +100,7 @@ struct DeckCardView: View {
                         Text("Reading drive...").font(.caption).foregroundStyle(.secondary)
                     }.padding(.vertical, 4)
                 } else if files.isEmpty {
-                    Text(pingStatus == .unauthorized
-                         ? "Login failed — check username/password."
-                         : "No .mov files found.")
+                    Text(emptyFilesMessage)
                         .font(.caption).foregroundStyle(.secondary)
                         .padding(.vertical, 4)
                 } else {
@@ -207,6 +205,17 @@ struct DeckCardView: View {
         }
     }
 
+    // Explains *why* the file list is empty, matching whichever specific
+    // failure the monitor detected — not just a generic fallback.
+    private var emptyFilesMessage: String {
+        switch pingStatus {
+        case .unauthorized: return "Login failed — check username/password."
+        case .pathNotFound: return "Remote folder not found — check the file location in settings."
+        case .noMedia:      return "No drive detected in the deck."
+        default:            return "No .mov files found."
+        }
+    }
+
     // MARK: - FTP file list
     private func fetchFiles() async {
         guard pingStatus == .online else { isFetchingFiles = false; return }
@@ -224,6 +233,8 @@ struct DeckCardView: View {
             case .online:       return ("Online", .green)
             case .offline:      return ("Offline", .red)
             case .unauthorized: return ("Login Failed", .orange)
+            case .pathNotFound: return ("Wrong Path", .orange)
+            case .noMedia:      return ("No Drive", .red)
             case .syncing:      return ("Syncing", .blue)
             case .transcoding:  return ("Converting", .orange)
             }

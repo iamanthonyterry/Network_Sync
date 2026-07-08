@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - Deck Status
 enum DeckStatus: String, Codable {
-    case unknown, online, offline, unauthorized, syncing, transcoding
+    case unknown, online, offline, unauthorized, pathNotFound, noMedia, syncing, transcoding
 }
 
 // MARK: - HyperDeck
@@ -146,9 +146,10 @@ struct PipelineRun: Identifiable, Codable, Hashable {
 
     var durationFormatted: String {
         let s = Int(duration)
-        if s < 60 { return "\(s)s" }
-        let m = s / 60; let r = s % 60
-        return r == 0 ? "\(m)m" : "\(m)m \(r)s"
+        let h = s / 3600
+        let m = (s % 3600) / 60
+        let r = s % 60
+        return String(format: "%d:%02d:%02d", h, m, r)
     }
 }
 

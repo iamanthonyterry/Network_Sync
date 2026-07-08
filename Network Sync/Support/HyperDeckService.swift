@@ -86,6 +86,22 @@ final class HyperDeckService: ObservableObject {
         transport = parseTransport(from: response)
     }
 
+    /// Checks whether a disk/SSD is actually installed in the deck, using
+    /// the "slot info" command. Returns nil if the check itself couldn't be
+    /// completed (e.g. connection dropped) — that's different from "no media",
+    /// so callers shouldn't treat nil the same as `false`.
+    func checkMediaPresent() async -> Bool? {
+        let response = await sendAndReceive(command: "slot info\n")
+        guard !response.isEmpty else { return nil }
+        return !response.lowercased().contains("status: empty")
+    }
+
+    /// One-shot convenience for a caller that just wants a quick check
+    /// against an IP without holding onto a service instance.
+    static func checkMediaPresent(host: String) async -> Bool? {
+        await HyperDeckService(host: host).checkMediaPresent()
+    }
+
     // MARK: - Private Networking
 
     /// Opens a fresh TCP connection, sends a command, and closes.
