@@ -2,10 +2,12 @@
 set -euo pipefail
 
 # Network Sync release script
-# Usage: ./release.sh 0.0.1-alpha
+# Usage: ./release.sh 0.0.2-alpha
+# Github Release push: 
+#  gh release create v0.0.2-alpha build/NetworkSync-0.0.2-alpha.zip build/appcast.xml --title "0.0.2-alpha" --notes "Second alpha release"
 # Bumps MARKETING_VERSION, archives, exports, notarizes, staples, zips,
 # and generates the Sparkle appcast — ready to upload to a GitHub Release.
-#
+
 # One-time setup before first use:
 #   xcrun notarytool store-credentials AC_PASSWORD \
 #     --apple-id you@example.com --team-id BPZ4H86MC6 --password <app-specific-password>
