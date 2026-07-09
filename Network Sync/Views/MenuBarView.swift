@@ -2,7 +2,7 @@ import SwiftUI
 
 struct MenuBarView: View {
     @EnvironmentObject var appState: AppState
-    @StateObject private var pipeline = PipelineEngine.shared
+    @StateObject private var workflowEngine = WorkflowEngine.shared
 
     var body: some View {
         // Status
@@ -17,12 +17,12 @@ struct MenuBarView: View {
                     .padding(.horizontal, 8)
             }
         } else {
-            let last = appState.runHistory.first
+            let last = appState.workflowRunHistory.first
             if let error = appState.mountError {
                 Label(error, systemImage: "exclamationmark.triangle.fill")
                     .foregroundStyle(.red)
             } else if let last {
-                Text("Last run: \(last.finishedAt.formatted(.relative(presentation: .named)))")
+                Text("Last run: \(last.workflowName) · \(last.finishedAt.formatted(.relative(presentation: .named)))")
                     .foregroundStyle(.secondary)
             } else {
                 Text("No runs yet").foregroundStyle(.secondary)
@@ -33,26 +33,35 @@ struct MenuBarView: View {
 
         if appState.isRunning {
             Button(role: .destructive) {
-                pipeline.stop()
+                workflowEngine.stop()
             } label: {
-                Label("Stop Pipeline", systemImage: "stop.fill")
+                Label("Stop Workflow", systemImage: "stop.fill")
             }
         } else {
-            Button {
-                Task { await pipeline.runAll() }
-            } label: {
-                Label("Start Sync & Transcode", systemImage: "play.fill")
+            let runnable = appState.workflows.filter { !$0.steps.isEmpty }
+            if runnable.isEmpty {
+                Text("No workflows — create one in the app")
+                    .foregroundStyle(.secondary)
+            } else {
+                Menu("Run Workflow") {
+                    ForEach(runnable.sorted { $0.sortOrder < $1.sortOrder }) { workflow in
+                        Button(workflow.name) {
+                            Task { await workflowEngine.run(workflow) }
+                        }
+                    }
+                }
             }
-            .disabled(appState.hyperDecks.isEmpty && appState.switchers.isEmpty && appState.cloudStores.isEmpty)
         }
 
         Divider()
 
         // Schedule status
-        let s = appState.scheduleSettings
-        if s.isEnabled {
-            Label("Scheduled at \(s.displayTime) daily", systemImage: "clock")
-                .foregroundStyle(.secondary)
+        let scheduled = appState.workflows.filter { $0.schedule.isEnabled }
+        if !scheduled.isEmpty {
+            ForEach(scheduled) { workflow in
+                Label("\(workflow.name) at \(workflow.schedule.displayTime)", systemImage: "clock")
+                    .foregroundStyle(.secondary)
+            }
         }
 
         Divider()

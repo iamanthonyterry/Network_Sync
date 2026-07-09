@@ -4,7 +4,7 @@ import UniformTypeIdentifiers
 
 struct HistoryView: View {
     @EnvironmentObject var appState: AppState
-    @State private var selectedRun: PipelineRun?
+    @State private var selectedRun: WorkflowRun?
 
     var body: some View {
         HSplitView {
@@ -14,9 +14,9 @@ struct HistoryView: View {
                     Text("Run History")
                         .font(.title2).bold()
                     Spacer()
-                    if !appState.runHistory.isEmpty {
+                    if !appState.workflowRunHistory.isEmpty {
                         Button(role: .destructive) {
-                            appState.runHistory.removeAll()
+                            appState.workflowRunHistory.removeAll()
                             selectedRun = nil
                         } label: {
                             Label("Clear", systemImage: "trash")
@@ -28,18 +28,18 @@ struct HistoryView: View {
                 .padding()
                 Divider()
 
-                if appState.runHistory.isEmpty {
+                if appState.workflowRunHistory.isEmpty {
                     VStack(spacing: 12) {
                         Spacer()
                         Image(systemName: "clock.arrow.circlepath")
                             .font(.system(size: 40)).foregroundStyle(.secondary)
                         Text("No Runs Yet").font(.title3).bold()
-                        Text("Completed pipeline runs appear here.")
+                        Text("Completed workflow runs appear here.")
                             .foregroundStyle(.secondary)
                         Spacer()
                     }
                 } else {
-                    List(appState.runHistory, selection: $selectedRun) { run in
+                    List(appState.workflowRunHistory, selection: $selectedRun) { run in
                         RunRow(run: run)
                             .tag(run)
                     }
@@ -69,27 +69,26 @@ struct HistoryView: View {
 
 // MARK: - Run Row
 struct RunRow: View {
-    let run: PipelineRun
+    let run: WorkflowRun
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Image(systemName: run.errors == 0 ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
                     .foregroundStyle(run.errors == 0 ? .green : .orange)
-                Text(run.startedAt, style: .date)
+                Text(run.workflowName)
                     .font(.headline)
                 Spacer()
                 Text(run.durationFormatted)
                     .font(.caption).foregroundStyle(.secondary)
             }
             HStack(spacing: 12) {
-                statChip("\(run.converted) converted", color: .green)
+                statChip("\(run.processed) processed", color: .green)
                 if run.errors > 0 { statChip("\(run.errors) errors", color: .red) }
-                if run.skipped > 0 { statChip("\(run.skipped) skipped", color: .secondary) }
             }
-            Text(run.startedAt, style: .time)
-                .font(.caption).foregroundStyle(.secondary)
+            Text(run.startedAt, style: .date) + Text(" · ") + Text(run.startedAt, style: .time)
         }
+        .font(.caption).foregroundStyle(.secondary)
         .padding(.vertical, 4)
     }
 
@@ -105,17 +104,18 @@ struct RunRow: View {
 
 // MARK: - Run Detail
 struct RunDetailView: View {
-    let run: PipelineRun
+    let run: WorkflowRun
     @State private var showLog = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
 
+                Text(run.workflowName).font(.title3).bold()
+
                 // Header stats
                 HStack(spacing: 16) {
-                    statCard(value: "\(run.converted)", label: "Converted", color: .green)
-                    statCard(value: "\(run.skipped)",   label: "Skipped",   color: .blue)
+                    statCard(value: "\(run.processed)", label: "Processed", color: .green)
                     statCard(value: "\(run.errors)",    label: "Errors",    color: run.errors > 0 ? .red : .secondary)
                     statCard(value: run.durationFormatted, label: "Duration", color: .primary)
                 }
@@ -182,11 +182,12 @@ struct RunDetailView: View {
 
         let header = """
         Network Sync Run Log
+        Workflow: \(run.workflowName)
         Started:  \(run.startedAt.formatted(date: .abbreviated, time: .standard))
         Finished: \(run.finishedAt.formatted(date: .abbreviated, time: .standard))
         Duration: \(run.durationFormatted)
         Decks:    \(run.decksProcessed.joined(separator: ", "))
-        Converted: \(run.converted)  Skipped: \(run.skipped)  Errors: \(run.errors)
+        Processed: \(run.processed)  Errors: \(run.errors)
 
         """
         let contents = header + run.log.joined(separator: "\n")

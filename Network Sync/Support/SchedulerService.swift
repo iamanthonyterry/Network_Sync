@@ -1,24 +1,21 @@
 import Foundation
 import Combine
 
-// Watches the clock and fires the pipeline (or a scheduled workflow) when its
-// scheduled time arrives. Uses a 30-second polling interval — lightweight and
-// reliable without needing a background daemon or LaunchAgent.
+// Watches the clock and runs any workflow when its scheduled time arrives.
+// Uses a 30-second polling interval — lightweight and reliable without
+// needing a background daemon or LaunchAgent.
 @MainActor
 class SchedulerService: ObservableObject {
     static let shared = SchedulerService()
 
     private var timer: Timer?
-    private var firedToday = false
-    private var lastFiredDate: Date?
     /// Tracks which workflows already fired today, keyed by workflow id.
     private var workflowsFiredToday: [UUID: Date] = [:]
 
     private let appState = AppState.shared
-    private let pipeline = PipelineEngine.shared
     private let workflowEngine = WorkflowEngine.shared
 
-    // Call at app launch and whenever any schedule changes
+    // Call at app launch and whenever any workflow's schedule changes
     func sync() {
         timer?.invalidate()
         guard hasAnyScheduleEnabled else { return }
@@ -35,38 +32,13 @@ class SchedulerService: ObservableObject {
     }
 
     private var hasAnyScheduleEnabled: Bool {
-        appState.scheduleSettings.isEnabled || appState.workflows.contains { $0.schedule.isEnabled }
+        appState.workflows.contains { $0.schedule.isEnabled }
     }
 
     // MARK: - Tick
     private func tick() {
         guard !appState.isRunning else { return }
-        tickLegacySchedule()
         tickWorkflowSchedules()
-    }
-
-    // MARK: - Legacy global schedule (Settings tab)
-    private func tickLegacySchedule() {
-        let s = appState.scheduleSettings
-        guard s.isEnabled else { return }
-
-        guard isDue(hour: s.hour, minute: s.minute) else {
-            if let last = lastFiredDate, !Calendar.current.isDateInToday(last) {
-                firedToday = false
-            }
-            return
-        }
-        guard !firedToday else { return }
-        firedToday = true
-        lastFiredDate = Date()
-
-        appState.log("🕐 Scheduled run triggered at \(s.displayTime)")
-        Task { await pipeline.runAll() }
-
-        if !s.repeatDaily {
-            appState.scheduleSettings.isEnabled = false
-            sync()
-        }
     }
 
     // MARK: - Per-workflow schedules

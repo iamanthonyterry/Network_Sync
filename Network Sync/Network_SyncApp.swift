@@ -17,9 +17,6 @@ struct Network_SyncApp: App {
                 .onOpenURL { url in
                     GmailAuthService.shared.handleRedirect(url: url)
                 }
-                .onChange(of: appState.scheduleSettings.isEnabled) { scheduler.sync() }
-                .onChange(of: appState.scheduleSettings.hour)      { scheduler.sync() }
-                .onChange(of: appState.scheduleSettings.minute)    { scheduler.sync() }
         }
         .windowStyle(.titleBar)
         .windowToolbarStyle(.unified)
@@ -32,15 +29,20 @@ struct Network_SyncApp: App {
                 .disabled(!UpdateService.shared.canCheckForUpdates)
             }
             CommandGroup(after: .appInfo) {
-                Button("Start Sync & Transcode") {
-                    Task { await PipelineEngine.shared.runAll() }
+                let runnable = appState.workflows.filter { !$0.steps.isEmpty }
+
+                Menu("Run Workflow") {
+                    ForEach(runnable.sorted { $0.sortOrder < $1.sortOrder }) { workflow in
+                        Button(workflow.name) {
+                            Task { await WorkflowEngine.shared.run(workflow) }
+                        }
+                    }
                 }
-                .keyboardShortcut("r", modifiers: [.command, .shift])
-                .disabled(appState.isRunning || (appState.hyperDecks.count + appState.switchers.count + appState.cloudStores.count == 0))
+                .disabled(appState.isRunning || runnable.isEmpty)
 
                 if appState.isRunning {
-                    Button("Stop Pipeline") {
-                        PipelineEngine.shared.stop()
+                    Button("Stop Workflow") {
+                        WorkflowEngine.shared.stop()
                     }
                     .keyboardShortcut(".", modifiers: .command)
                 }

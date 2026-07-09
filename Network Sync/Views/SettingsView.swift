@@ -2,7 +2,6 @@ import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject var appState: AppState
-    @StateObject private var scheduler = SchedulerService.shared
     @State private var mountResult: String?
     @State private var testingMount = false
     @State private var selectedStoreID: UUID? = nil   // nil = Custom
@@ -13,7 +12,6 @@ struct SettingsView: View {
                 Text("Settings").font(.title2).bold().padding(.horizontal)
                 //cloudStoreSection
                 conversionSection
-                scheduleSection
                 storageSection
                 formatDriveSection
                 emailSection
@@ -49,47 +47,6 @@ struct SettingsView: View {
                 LabeledContent("Engine") {
                     Text("AVFoundation (built-in, hardware-accelerated)")
                         .font(.caption).foregroundStyle(.secondary)
-                }
-            }.formStyle(.columns)
-        }.padding(.horizontal)
-    }
-
-    // MARK: - Schedule
-    private var scheduleSection: some View {
-        GroupBox(label: Label("Scheduled Sync", systemImage: "clock")) {
-            Form {
-                LabeledContent("Enable Schedule") {
-                    Toggle("", isOn: $appState.scheduleSettings.isEnabled)
-                        .labelsHidden()
-                        .onChange(of: appState.scheduleSettings.isEnabled) { scheduler.sync() }
-                }
-                if appState.scheduleSettings.isEnabled {
-                    LabeledContent("Run Time") {
-                        HStack(spacing: 8) {
-                            Stepper(value: $appState.scheduleSettings.hour, in: 0...23) {
-                                Text(String(format: "%02d", appState.scheduleSettings.hour))
-                                    .monospacedDigit().frame(width: 28)
-                            }
-                            .onChange(of: appState.scheduleSettings.hour) { scheduler.sync() }
-                            Text(":")
-                            Stepper(value: $appState.scheduleSettings.minute, in: 0...59, step: 5) {
-                                Text(String(format: "%02d", appState.scheduleSettings.minute))
-                                    .monospacedDigit().frame(width: 28)
-                            }
-                            .onChange(of: appState.scheduleSettings.minute) { scheduler.sync() }
-                            Text(appState.scheduleSettings.displayTime)
-                                .font(.caption).foregroundStyle(.secondary)
-                                .padding(.leading, 4)
-                        }
-                    }
-                    LabeledContent("Repeat") {
-                        Toggle("Daily", isOn: $appState.scheduleSettings.repeatDaily)
-                    }
-                    HStack(spacing: 6) {
-                        Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-                        Text("Next run at \(appState.scheduleSettings.displayTime)\(appState.scheduleSettings.repeatDaily ? " every day" : " — once")")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
                 }
             }.formStyle(.columns)
         }.padding(.horizontal)

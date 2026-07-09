@@ -31,13 +31,13 @@ struct ContentView: View {
             .navigationTitle("Church Sync")
 
             // Schedule status badge at bottom of sidebar
-            if appState.scheduleSettings.isEnabled {
+            if !scheduledWorkflows.isEmpty {
                 Divider()
                 HStack(spacing: 6) {
                     Image(systemName: "clock.fill")
                         .font(.caption)
                         .foregroundStyle(.blue)
-                    Text("Scheduled \(appState.scheduleSettings.displayTime)")
+                    Text(scheduleBadgeText)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -53,5 +53,16 @@ struct ContentView: View {
             case .settings:         SettingsView()
             }
         }
+    }
+
+    private var scheduledWorkflows: [Workflow] {
+        appState.workflows.filter { $0.schedule.isEnabled }
+    }
+
+    private var scheduleBadgeText: String {
+        if scheduledWorkflows.count == 1, let workflow = scheduledWorkflows.first {
+            return "\(workflow.name) at \(workflow.schedule.displayTime)"
+        }
+        return "\(scheduledWorkflows.count) workflows scheduled"
     }
 }

@@ -131,28 +131,6 @@ struct SyncTask: Identifiable {
     }
 }
 
-// MARK: - Completed run history (persisted)
-struct PipelineRun: Identifiable, Codable, Hashable {
-    var id = UUID()
-    var startedAt: Date
-    var finishedAt: Date
-    var converted: Int
-    var skipped: Int
-    var errors: Int
-    var decksProcessed: [String]
-    var log: [String]
-
-    var duration: TimeInterval { finishedAt.timeIntervalSince(startedAt) }
-
-    var durationFormatted: String {
-        let s = Int(duration)
-        let h = s / 3600
-        let m = (s % 3600) / 60
-        let r = s % 60
-        return String(format: "%d:%02d:%02d", h, m, r)
-    }
-}
-
 // MARK: - Schedule Settings
 struct ScheduleSettings: Codable, Hashable {
     var isEnabled: Bool = false

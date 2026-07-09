@@ -8,7 +8,7 @@ import SwiftUI
 
 struct DashboardView: View {
     @EnvironmentObject var appState: AppState
-    @StateObject private var pipeline = PipelineEngine.shared
+    @StateObject private var workflowEngine = WorkflowEngine.shared
     @StateObject private var discovery = DeviceDiscovery()
     @ObservedObject private var monitor = ConnectionMonitor.shared
 
@@ -21,7 +21,6 @@ struct DashboardView: View {
     var errorCount: Int   { appState.activeTasks.filter { $0.phase == .error }.count }
 
     var totalDevices: Int  { appState.hyperDecks.count + appState.switchers.count + appState.cloudStores.count }
-    var hasDecks: Bool     { !appState.hyperDecks.isEmpty }
 
     private var hasDiscovered: Bool {
         !discovery.discoveredDecks.isEmpty || !discovery.discoveredSwitchers.isEmpty
@@ -63,12 +62,14 @@ struct DashboardView: View {
                 Text(message).font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
-            Button {
-                Task { await pipeline.runAll() }
-            } label: {
-                Label("Retry", systemImage: "arrow.counterclockwise")
+            if let workflow = appState.lastRunWorkflow {
+                Button {
+                    Task { await workflowEngine.run(workflow) }
+                } label: {
+                    Label("Retry", systemImage: "arrow.counterclockwise")
+                }
+                .buttonStyle(.bordered)
             }
-            .buttonStyle(.bordered)
             Button {
                 appState.mountError = nil
             } label: {
@@ -231,11 +232,11 @@ struct DashboardView: View {
     private var actionBar: some View {
         HStack(spacing: 16) {
             // Last run summary
-            if let last = appState.runHistory.first, !appState.isRunning {
+            if let last = appState.workflowRunHistory.first, !appState.isRunning {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Last run: \(last.finishedAt.formatted(.relative(presentation: .named)))")
+                    Text("Last run: \(last.workflowName) · \(last.finishedAt.formatted(.relative(presentation: .named)))")
                         .font(.caption).foregroundStyle(.secondary)
-                    Text("\(last.converted) converted · \(last.durationFormatted)")
+                    Text("\(last.processed) processed · \(last.durationFormatted)")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 .padding(.leading)
@@ -246,7 +247,7 @@ struct DashboardView: View {
             // Retry button — visible after a run with errors
             if !appState.isRunning && !appState.failedTasks.isEmpty {
                 Button {
-                    Task { await pipeline.retryFailed() }
+                    Task { await workflowEngine.retryFailed() }
                 } label: {
                     Label("Retry \(appState.failedTasks.count) Failed", systemImage: "arrow.counterclockwise")
                         .padding(.horizontal, 16).padding(.vertical, 8)
@@ -257,26 +258,46 @@ struct DashboardView: View {
 
             if appState.isRunning {
                 Button(role: .destructive) {
-                    pipeline.stop()
+                    workflowEngine.stop()
                 } label: {
-                    Label("Stop Pipeline", systemImage: "stop.fill")
+                    Label("Stop Workflow", systemImage: "stop.fill")
                         .padding(.horizontal, 28).padding(.vertical, 8)
                 }
                 .buttonStyle(.borderedProminent).tint(.red)
             } else {
-                Button {
-                    Task { await pipeline.runAll() }
-                } label: {
-                    Label("Start Sync & Transcode", systemImage: "play.fill")
-                        .padding(.horizontal, 28).padding(.vertical, 8)
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(!hasDecks)
+                runWorkflowMenu
             }
 
             Spacer()
         }
         .padding()
+    }
+
+    // MARK: - Run Workflow menu
+    // The primary dashboard action: pick any user-defined workflow and run
+    // it against its configured target devices. No workflow is baked in —
+    // if none exist yet, this points the user to the Workflows tab instead.
+    @ViewBuilder private var runWorkflowMenu: some View {
+        let runnable = appState.workflows.filter { !$0.steps.isEmpty }
+
+        if runnable.isEmpty {
+            Label("No workflows yet — create one in Workflows", systemImage: "flowchart")
+                .font(.subheadline).foregroundStyle(.secondary)
+        } else {
+            Menu {
+                ForEach(runnable.sorted { $0.sortOrder < $1.sortOrder }) { workflow in
+                    Button(workflow.name) {
+                        Task { await workflowEngine.run(workflow) }
+                    }
+                }
+            } label: {
+                Label("Run Workflow", systemImage: "play.fill")
+                    .padding(.horizontal, 28).padding(.vertical, 8)
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .buttonStyle(.borderedProminent)
+        }
     }
 
     // MARK: - Helpers

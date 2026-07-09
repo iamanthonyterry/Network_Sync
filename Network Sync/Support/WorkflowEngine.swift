@@ -39,6 +39,7 @@ final class WorkflowEngine: ObservableObject {
         guard !appState.isRunning else { return }
         appState.isRunning = true
         appState.beginRun()
+        appState.lastRunWorkflow = workflow
         appState.log("▶ Workflow started: \(workflow.name)")
 
         guard !decks.isEmpty else {
@@ -95,6 +96,65 @@ final class WorkflowEngine: ObservableObject {
         appState.isRunning = false
         appState.log("⏹ Workflow stopped by user")
         appState.commitRun()
+    }
+
+    // MARK: - Retry failed tasks
+    // Re-downloads and re-converts whichever files errored out on the last
+    // run, using each deck's normal destination (its Cloud Store, or the
+    // shared global destination) and the app's current conversion settings.
+
+    func retryFailed() async {
+        let failed = appState.failedTasks
+        guard !failed.isEmpty, !appState.isRunning else { return }
+        appState.isRunning = true
+        appState.log("↩ Retrying \(failed.count) failed file(s)...")
+
+        var mountedPaths: [UUID?: String] = [:]
+        let byDeck = Dictionary(grouping: failed, by: \.deckName)
+
+        for (deckName, tasks) in byDeck {
+            guard let deck = appState.hyperDecks.first(where: { $0.name == deckName }) else { continue }
+
+            let destDir: URL
+            do {
+                destDir = try await resolveDestination(for: deck, cache: &mountedPaths)
+            } catch {
+                appState.log("❌ \(deck.name): \(error.localizedDescription)")
+                appState.mountError = error.localizedDescription
+                appState.currentRunErrors += 1
+                continue
+            }
+
+            var toConvert: [URL] = []
+
+            for task in tasks {
+                resetTask(id: task.id)
+                let destURL = destDir.appendingPathComponent(task.fileName)
+                try? FileManager.default.removeItem(at: destURL)
+
+                let result = await FTPService.downloadFile(
+                    named: task.fileName, from: deck, to: destURL
+                ) { [weak self] pct in Task { @MainActor in self?.updateTask(id: task.id, syncProgress: pct) } }
+
+                if result.success {
+                    updateTask(id: task.id, phase: .converting, syncProgress: 1)
+                    toConvert.append(destURL)
+                } else {
+                    let reason = result.failureReason ?? "unknown error"
+                    updateTask(id: task.id, phase: .error, errorMessage: "Retry failed: \(reason)")
+                    appState.log("  ❌ Retry failed: \(task.fileName) (\(reason))")
+                    appState.currentRunErrors += 1
+                }
+            }
+
+            if !toConvert.isEmpty {
+                var context = StepContext(deck: deck, destDir: destDir, files: toConvert)
+                await runConvert(context: &context, preset: appState.conversionSettings.preset, deleteOriginal: true)
+            }
+        }
+
+        appState.isRunning = false
+        appState.log("↩ Retry complete")
     }
 
     // MARK: - Step dispatch
@@ -478,5 +538,14 @@ final class WorkflowEngine: ObservableObject {
         if let v = syncProgress    { appState.activeTasks[i].syncProgress    = v }
         if let v = convertProgress { appState.activeTasks[i].convertProgress = v }
         if let v = errorMessage    { appState.activeTasks[i].errorMessage    = v }
+    }
+
+    /// Clears a task back to its initial state before a retry attempt.
+    private func resetTask(id: UUID) {
+        guard let i = appState.activeTasks.firstIndex(where: { $0.id == id }) else { return }
+        appState.activeTasks[i].phase           = .downloading
+        appState.activeTasks[i].syncProgress    = 0
+        appState.activeTasks[i].convertProgress = 0
+        appState.activeTasks[i].errorMessage    = nil
     }
 }

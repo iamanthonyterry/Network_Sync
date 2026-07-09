@@ -22,12 +22,6 @@ class AppState: ObservableObject {
     @Published var conversionSettings: ConversionSettings = ConversionSettings() {
         didSet { save(conversionSettings, key: "conversionSettings") }
     }
-    @Published var scheduleSettings: ScheduleSettings = ScheduleSettings() {
-        didSet { save(scheduleSettings, key: "scheduleSettings") }
-    }
-    @Published var runHistory: [PipelineRun] = [] {
-        didSet { save(runHistory, key: "runHistory") }
-    }
     @Published var workflows: [Workflow] = [] {
         didSet { save(workflows, key: "workflows") }
     }
@@ -46,6 +40,9 @@ class AppState: ObservableObject {
     @Published var activeTasks: [SyncTask] = []
     @Published var pipelineLog: [String] = []
     @Published var mountError: String? = nil
+    /// The workflow behind the run currently in progress (or most recently
+    /// finished) — lets the UI offer a same-workflow retry after a mount error.
+    @Published var lastRunWorkflow: Workflow? = nil
 
     // Failed tasks eligible for retry
     var failedTasks: [SyncTask] { activeTasks.filter { $0.phase == .error } }
@@ -66,8 +63,6 @@ class AppState: ObservableObject {
         cloudStores        = load([CloudStore].self,         key: "cloudStores")        ?? []
         syncLocation       = load(SyncLocation.self,         key: "syncLocation")       ?? SyncLocation()
         conversionSettings = load(ConversionSettings.self, key: "conversionSettings") ?? ConversionSettings()
-        scheduleSettings   = load(ScheduleSettings.self,   key: "scheduleSettings")   ?? ScheduleSettings()
-        runHistory                 = load([PipelineRun].self,               key: "runHistory")                 ?? []
         workflows                  = load([Workflow].self,                  key: "workflows")                  ?? []
         workflowRunHistory         = load([WorkflowRun].self,               key: "workflowRunHistory")         ?? []
         emailNotificationSettings  = load(EmailNotificationSettings.self,   key: "emailNotificationSettings")  ?? EmailNotificationSettings()
@@ -155,18 +150,10 @@ class AppState: ObservableObject {
         mountError          = nil
     }
 
+    /// Ends the live-progress phase of a run. Recording the completed run
+    /// itself is each engine's job (see WorkflowEngine.finishRun), since only
+    /// it knows which workflow ran and what it accomplished.
     func commitRun() {
-        let run = PipelineRun(
-            startedAt:       currentRunStart,
-            finishedAt:      Date(),
-            converted:       currentRunConverted,
-            skipped:         currentRunSkipped,
-            errors:          currentRunErrors,
-            decksProcessed:  currentRunDecks,
-            log:             pipelineLog
-        )
-        runHistory.insert(run, at: 0)
-        if runHistory.count > 50 { runHistory = Array(runHistory.prefix(50)) }
         runStartTime = nil
     }
 
