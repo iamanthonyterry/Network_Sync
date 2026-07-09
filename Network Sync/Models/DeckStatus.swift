@@ -132,15 +132,96 @@ struct SyncTask: Identifiable {
 }
 
 // MARK: - Schedule Settings
+
+enum ScheduleMode: String, Codable, CaseIterable, Identifiable {
+    case daily
+    case oneTime
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .daily:   return "Daily"
+        case .oneTime: return "One Time"
+        }
+    }
+}
+
+// Matches Calendar's `.weekday` component: 1 = Sunday ... 7 = Saturday.
+enum Weekday: Int, Codable, CaseIterable, Identifiable, Hashable {
+    case sunday = 1, monday, tuesday, wednesday, thursday, friday, saturday
+
+    var id: Int { rawValue }
+
+    var shortLabel: String {
+        switch self {
+        case .sunday:    return "Su"
+        case .monday:    return "Mo"
+        case .tuesday:   return "Tu"
+        case .wednesday: return "We"
+        case .thursday:  return "Th"
+        case .friday:    return "Fr"
+        case .saturday:  return "Sa"
+        }
+    }
+
+    var fullLabel: String {
+        switch self {
+        case .sunday:    return "Sunday"
+        case .monday:    return "Monday"
+        case .tuesday:   return "Tuesday"
+        case .wednesday: return "Wednesday"
+        case .thursday:  return "Thursday"
+        case .friday:    return "Friday"
+        case .saturday:  return "Saturday"
+        }
+    }
+}
+
 struct ScheduleSettings: Codable, Hashable {
     var isEnabled: Bool = false
+    var mode: ScheduleMode = .daily
+
+    // Daily mode
     var hour: Int = 2
     var minute: Int = 0
     var repeatDaily: Bool = true
+    /// Which days of the week this recurring schedule runs on. Empty means
+    /// "every day" — kept empty by default so existing workflows behave the
+    /// same as before this option existed.
+    var selectedWeekdays: Set<Weekday> = []
+
+    // One-time mode — a specific calendar date + time.
+    var oneTimeDate: Date = Date().addingTimeInterval(3600)
 
     var displayTime: String {
         let h = hour % 12 == 0 ? 12 : hour % 12
         let ampm = hour < 12 ? "AM" : "PM"
         return String(format: "%d:%02d %@", h, minute, ampm)
+    }
+
+    /// The days this schedule is actually active on — an empty selection is
+    /// treated as "every day."
+    var activeWeekdays: Set<Weekday> {
+        selectedWeekdays.isEmpty ? Set(Weekday.allCases) : selectedWeekdays
+    }
+
+    var displayWeekdays: String {
+        guard !selectedWeekdays.isEmpty, selectedWeekdays.count < 7 else { return "Every day" }
+        return Weekday.allCases
+            .filter { selectedWeekdays.contains($0) }
+            .map(\.shortLabel)
+            .joined(separator: ", ")
+    }
+
+    static let oneTimeDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        f.timeStyle = .short
+        return f
+    }()
+
+    var displayOneTimeDate: String {
+        Self.oneTimeDateFormatter.string(from: oneTimeDate)
     }
 }

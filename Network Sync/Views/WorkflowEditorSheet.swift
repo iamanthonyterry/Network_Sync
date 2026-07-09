@@ -160,19 +160,72 @@ struct WorkflowEditorSheet: View {
         Section("Schedule") {
             Toggle("Run Automatically", isOn: $schedule.isEnabled)
             if schedule.isEnabled {
-                HStack(spacing: 8) {
-                    Stepper(value: $schedule.hour, in: 0...23) {
-                        Text(String(format: "%02d", schedule.hour)).monospacedDigit().frame(width: 28)
+                Picker("", selection: $schedule.mode) {
+                    ForEach(ScheduleMode.allCases) { mode in
+                        Text(mode.title).tag(mode)
                     }
-                    Text(":")
-                    Stepper(value: $schedule.minute, in: 0...59, step: 5) {
-                        Text(String(format: "%02d", schedule.minute)).monospacedDigit().frame(width: 28)
-                    }
-                    Text(schedule.displayTime).font(.caption).foregroundStyle(.secondary).padding(.leading, 4)
                 }
-                Toggle("Repeat Daily", isOn: $schedule.repeatDaily)
+                .labelsHidden()
+                .pickerStyle(.segmented)
+
+                switch schedule.mode {
+                case .daily:
+                    HStack(spacing: 8) {
+                        Stepper(value: $schedule.hour, in: 0...23) {
+                            Text(String(format: "%02d", schedule.hour)).monospacedDigit().frame(width: 28)
+                        }
+                        Text(":")
+                        Stepper(value: $schedule.minute, in: 0...59, step: 5) {
+                            Text(String(format: "%02d", schedule.minute)).monospacedDigit().frame(width: 28)
+                        }
+                        Text(schedule.displayTime).font(.caption).foregroundStyle(.secondary).padding(.leading, 4)
+                    }
+                    Toggle("Repeat Daily", isOn: $schedule.repeatDaily)
+                    if schedule.repeatDaily {
+                        weekdaySelector
+                    }
+
+                case .oneTime:
+                    DatePicker(
+                        "Run At",
+                        selection: $schedule.oneTimeDate,
+                        in: Date()...,
+                        displayedComponents: [.date, .hourAndMinute]
+                    )
+                    Text("Runs once at the selected date and time, then turns off.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
             }
         }
+    }
+
+    private var weekdaySelector: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Runs On").font(.caption).foregroundStyle(.secondary)
+            HStack(spacing: 6) {
+                ForEach(Weekday.allCases) { day in
+                    let isOn = schedule.selectedWeekdays.contains(day)
+                    Button {
+                        if isOn {
+                            schedule.selectedWeekdays.remove(day)
+                        } else {
+                            schedule.selectedWeekdays.insert(day)
+                        }
+                    } label: {
+                        Text(day.shortLabel)
+                            .font(.caption).bold()
+                            .frame(width: 32, height: 28)
+                            .background(isOn ? Color.accentColor : Color(nsColor: .controlBackgroundColor))
+                            .foregroundStyle(isOn ? .white : .primary)
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            Text(schedule.displayWeekdays)
+                .font(.caption2).foregroundStyle(.tertiary)
+        }
+        .padding(.top, 2)
     }
 
     // MARK: - Save

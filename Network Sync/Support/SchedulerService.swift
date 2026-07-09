@@ -48,21 +48,37 @@ class SchedulerService: ObservableObject {
             guard s.isEnabled else { continue }
             guard !appState.isRunning else { return }   // only one run at a time
 
-            guard isDue(hour: s.hour, minute: s.minute) else {
-                if let last = workflowsFiredToday[workflow.id], !Calendar.current.isDateInToday(last) {
-                    workflowsFiredToday.removeValue(forKey: workflow.id)
+            switch s.mode {
+            case .daily:
+                guard isDue(hour: s.hour, minute: s.minute) else {
+                    if let last = workflowsFiredToday[workflow.id], !Calendar.current.isDateInToday(last) {
+                        workflowsFiredToday.removeValue(forKey: workflow.id)
+                    }
+                    continue
                 }
-                continue
-            }
-            guard workflowsFiredToday[workflow.id] == nil else { continue }
-            workflowsFiredToday[workflow.id] = Date()
+                guard isTodayActive(for: s) else { continue }
+                guard workflowsFiredToday[workflow.id] == nil else { continue }
+                workflowsFiredToday[workflow.id] = Date()
 
-            appState.log("🕐 Scheduled workflow triggered: \(workflow.name)")
-            Task { await workflowEngine.run(workflow) }
+                appState.log("🕐 Scheduled workflow triggered: \(workflow.name)")
+                Task { await workflowEngine.run(workflow) }
 
-            if !s.repeatDaily, var updated = appState.workflows.first(where: { $0.id == workflow.id }) {
-                updated.schedule.isEnabled = false
-                appState.updateWorkflow(updated)
+                if !s.repeatDaily, var updated = appState.workflows.first(where: { $0.id == workflow.id }) {
+                    updated.schedule.isEnabled = false
+                    appState.updateWorkflow(updated)
+                }
+
+            case .oneTime:
+                guard isDue(date: s.oneTimeDate) else { continue }
+
+                appState.log("🕐 Scheduled workflow triggered: \(workflow.name)")
+                Task { await workflowEngine.run(workflow) }
+
+                // One-time schedules always turn themselves off after firing.
+                if var updated = appState.workflows.first(where: { $0.id == workflow.id }) {
+                    updated.schedule.isEnabled = false
+                    appState.updateWorkflow(updated)
+                }
             }
         }
     }
@@ -70,5 +86,21 @@ class SchedulerService: ObservableObject {
     private func isDue(hour: Int, minute: Int) -> Bool {
         let now = Calendar.current.dateComponents([.hour, .minute], from: Date())
         return now.hour == hour && now.minute == minute
+    }
+
+    /// Whether today's weekday is one of the days this recurring schedule
+    /// is set to run on (an empty selection means every day).
+    private func isTodayActive(for schedule: ScheduleSettings) -> Bool {
+        guard let weekday = Weekday(rawValue: Calendar.current.component(.weekday, from: Date())) else {
+            return true
+        }
+        return schedule.activeWeekdays.contains(weekday)
+    }
+
+    /// A one-time schedule is due once its target moment has arrived — since
+    /// it disables itself immediately after firing, there's no need to guard
+    /// against firing twice in the same minute.
+    private func isDue(date target: Date) -> Bool {
+        Date() >= target
     }
 }

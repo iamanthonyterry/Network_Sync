@@ -132,7 +132,16 @@ struct WorkflowsView: View {
                 }
                 Spacer()
                 if workflow.schedule.isEnabled {
-                    Label(workflow.schedule.displayTime, systemImage: "clock.fill")
+                    let scheduleLabel: String = {
+                        if workflow.schedule.mode == .oneTime {
+                            return workflow.schedule.displayOneTimeDate
+                        }
+                        let time = workflow.schedule.displayTime
+                        return workflow.schedule.repeatDaily
+                            ? "\(time) · \(workflow.schedule.displayWeekdays)"
+                            : time
+                    }()
+                    Label(scheduleLabel, systemImage: "clock.fill")
                         .font(.system(size: 10, weight: .semibold))
                         .padding(.horizontal, 8).padding(.vertical, 4)
                         .background(Color.blue.opacity(0.15))
