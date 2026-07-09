@@ -173,6 +173,8 @@ final class WorkflowEngine: ObservableObject {
             await runFormat(context: &context)
         case .cleanup(let retentionDays):
             await runCleanup(context: &context, retentionDays: retentionDays)
+        case .notify(let header, let message, let recipients):
+            await runNotify(context: &context, header: header, message: message, recipients: recipients)
         }
     }
 
@@ -436,6 +438,35 @@ final class WorkflowEngine: ObservableObject {
         appState.log("  🗑 Cleanup removed \(deletedCount) old file(s)")
     }
 
+    // MARK: - Notification step
+
+    private func runNotify(
+        context: inout StepContext,
+        header: String,
+        message: String,
+        recipients: [NotificationRecipient]
+    ) async {
+        guard !recipients.isEmpty else {
+            appState.log("  ⏭ Notification: no recipients configured")
+            return
+        }
+        guard GmailAuthService.shared.isConnected else {
+            appState.log("  ⚠️ Notification: connect a Gmail account in Settings to send email")
+            return
+        }
+
+        appState.log("  ✉️ Sending notification \"\(header)\" to \(recipients.count) recipient(s)...")
+        let addresses = recipients.map(\.email)
+        let failed = await GmailSendService.sendIndividually(to: addresses, subject: header, body: message)
+
+        if failed.isEmpty {
+            appState.log("  ✅ Notification sent")
+        } else {
+            appState.log("  ⚠️ Failed to email: \(failed.joined(separator: ", "))")
+            appState.currentRunErrors += 1
+        }
+    }
+
     // MARK: - Finish
 
     private func finishRun(workflow: Workflow) {
@@ -461,7 +492,6 @@ final class WorkflowEngine: ObservableObject {
 
         appState.commitRun()
         NotificationService.sendCompletion(converted: c, errors: e)
-        Task { await EmailNotificationService.sendSyncComplete(converted: c, errors: e) }
     }
 
     // MARK: - Helpers

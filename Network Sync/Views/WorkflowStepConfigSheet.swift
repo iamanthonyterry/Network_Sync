@@ -13,6 +13,10 @@ struct WorkflowStepConfigSheet: View {
     @State private var retentionDays = 30
     @State private var stopRecordingAutomatically = false
     @State private var stopAfterMinutes = 5
+    @State private var notifyHeader = ""
+    @State private var notifyMessage = ""
+    @State private var notifyRecipients: [NotificationRecipient] = []
+    @State private var showingAddRecipient = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -53,6 +57,9 @@ struct WorkflowStepConfigSheet: View {
 
                 case .cleanup:
                     cleanupFields
+
+                case .notify:
+                    notifyFields
                 }
             }
             .formStyle(.grouped)
@@ -60,6 +67,11 @@ struct WorkflowStepConfigSheet: View {
         }
         .frame(width: 420)
         .onAppear(perform: load)
+        .sheet(isPresented: $showingAddRecipient) {
+            AddRecipientSheet(isPresented: $showingAddRecipient) { name, email in
+                notifyRecipients.append(NotificationRecipient(name: name, email: email))
+            }
+        }
     }
 
     // MARK: - Field groups
@@ -151,6 +163,70 @@ struct WorkflowStepConfigSheet: View {
         }
     }
 
+    private var notifyFields: some View {
+        Group {
+            Section {
+                LabeledContent("Header") {
+                    TextField("e.g. Sync Complete", text: $notifyHeader)
+                        .textFieldStyle(.roundedBorder)
+                }
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Message").font(.caption).foregroundStyle(.secondary)
+                    TextEditor(text: $notifyMessage)
+                        .font(.body)
+                        .frame(minHeight: 80, maxHeight: 160)
+                        .scrollContentBackground(.hidden)
+                        .background(Color(nsColor: .textBackgroundColor))
+                        .cornerRadius(6)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+                        )
+                }
+            }
+
+            Section {
+                HStack {
+                    Text("Recipients").font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    Button {
+                        showingAddRecipient = true
+                    } label: {
+                        Label("Add", systemImage: "plus")
+                            .font(.caption)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+
+                if notifyRecipients.isEmpty {
+                    Text("No recipients added yet.")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.vertical, 8)
+                } else {
+                    ForEach(notifyRecipients) { recipient in
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(recipient.name).font(.body)
+                                Text(recipient.email).font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Button {
+                                notifyRecipients.removeAll { $0.id == recipient.id }
+                            } label: {
+                                Image(systemName: "trash").foregroundStyle(.red)
+                            }
+                            .buttonStyle(.borderless)
+                        }
+                        .padding(.vertical, 2)
+                    }
+                }
+            }
+        }
+    }
+
     // MARK: - Load / Save
 
     private func load() {
@@ -168,6 +244,10 @@ struct WorkflowStepConfigSheet: View {
             pattern = pat
         case .cleanup(let days):
             retentionDays = days
+        case .notify(let header, let message, let recipients):
+            notifyHeader = header
+            notifyMessage = message
+            notifyRecipients = recipients
         }
     }
 
@@ -179,7 +259,66 @@ struct WorkflowStepConfigSheet: View {
         case .rename:  step.action = .rename(pattern: pattern.isEmpty ? "{name}" : pattern)
         case .format:  step.action = .format
         case .cleanup: step.action = .cleanup(retentionDays: retentionDays)
+        case .notify:
+            step.action = .notify(
+                header: notifyHeader.isEmpty ? "Workflow update" : notifyHeader,
+                message: notifyMessage,
+                recipients: notifyRecipients
+            )
         }
         dismiss()
+    }
+}
+
+// MARK: - Add Recipient Sheet
+
+struct AddRecipientSheet: View {
+    @Binding var isPresented: Bool
+    var onAdd: (String, String) -> Void
+
+    @State private var name: String = ""
+    @State private var email: String = ""
+
+    private var isValid: Bool {
+        !name.trimmingCharacters(in: .whitespaces).isEmpty &&
+        email.contains("@") &&
+        email.contains(".")
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            Text("Add Recipient")
+                .font(.title3)
+                .bold()
+
+            Form {
+                TextField("Name", text: $name)
+                    .textContentType(.name)
+                    .autocorrectionDisabled()
+
+                TextField("Email", text: $email)
+                    .textContentType(.emailAddress)
+                    .autocorrectionDisabled()
+            }
+            .formStyle(.columns)
+
+            HStack {
+                Spacer()
+                Button("Cancel") {
+                    isPresented = false
+                }
+                .keyboardShortcut(.escape)
+
+                Button("Add") {
+                    onAdd(name.trimmingCharacters(in: .whitespaces), email.trimmingCharacters(in: .whitespaces))
+                    isPresented = false
+                }
+                .keyboardShortcut(.return)
+                .disabled(!isValid)
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(24)
+        .frame(width: 360)
     }
 }

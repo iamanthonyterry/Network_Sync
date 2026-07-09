@@ -4,7 +4,7 @@ import SwiftUI
 // MARK: - Step Kind
 // The catalog of step types users can drag into a workflow.
 enum StepKind: String, Codable, CaseIterable, Identifiable {
-    case record, sync, convert, rename, format, cleanup
+    case record, sync, convert, rename, format, cleanup, notify
 
     var id: String { rawValue }
 
@@ -16,6 +16,7 @@ enum StepKind: String, Codable, CaseIterable, Identifiable {
         case .rename:  return "Rename"
         case .format:  return "Format Drive"
         case .cleanup: return "Cleanup"
+        case .notify:  return "Notification"
         }
     }
 
@@ -27,6 +28,7 @@ enum StepKind: String, Codable, CaseIterable, Identifiable {
         case .rename:  return "Rename files using a pattern"
         case .format:  return "Erase the device's drive"
         case .cleanup: return "Delete files older than N days"
+        case .notify:  return "Send an email"
         }
     }
 
@@ -38,6 +40,7 @@ enum StepKind: String, Codable, CaseIterable, Identifiable {
         case .rename:  return "textformat"
         case .format:  return "externaldrive.badge.xmark"
         case .cleanup: return "trash"
+        case .notify:  return "envelope"
         }
     }
 
@@ -49,6 +52,7 @@ enum StepKind: String, Codable, CaseIterable, Identifiable {
         case .rename:  return .purple
         case .format:  return .red
         case .cleanup: return .gray
+        case .notify:  return .teal
         }
     }
 }
@@ -62,6 +66,7 @@ enum StepAction: Codable, Hashable {
     case rename(pattern: String)
     case format
     case cleanup(retentionDays: Int)
+    case notify(header: String, message: String, recipients: [NotificationRecipient])
 
     var kind: StepKind {
         switch self {
@@ -71,6 +76,7 @@ enum StepAction: Codable, Hashable {
         case .rename:   return .rename
         case .format:   return .format
         case .cleanup:  return .cleanup
+        case .notify:   return .notify
         }
     }
 
@@ -82,6 +88,7 @@ enum StepAction: Codable, Hashable {
         case .rename:  return .rename(pattern: "{device}_{date}_{index}")
         case .format:  return .format
         case .cleanup: return .cleanup(retentionDays: 30)
+        case .notify:  return .notify(header: "Workflow update", message: "", recipients: [])
         }
     }
 
@@ -103,6 +110,9 @@ enum StepAction: Codable, Hashable {
             return "Permanently erases all files on the device"
         case .cleanup(let days):
             return "Deletes files older than \(days) day\(days == 1 ? "" : "s")"
+        case .notify(let header, _, let recipients):
+            let who = recipients.isEmpty ? "no recipients set" : "\(recipients.count) recipient\(recipients.count == 1 ? "" : "s")"
+            return "\"\(header)\" → \(who)"
         }
     }
 }
@@ -178,7 +188,7 @@ struct Workflow: Identifiable, Codable, Hashable {
 
     /// True if any step needs the shared sync destination mounted.
     var needsDestinationMount: Bool {
-        steps.contains { $0.kind != .format && $0.kind != .record }
+        steps.contains { $0.kind != .format && $0.kind != .record && $0.kind != .notify }
     }
 }
 
