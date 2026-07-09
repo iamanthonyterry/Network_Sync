@@ -26,6 +26,20 @@ final class HyperDeckService: ObservableObject {
     private let port: UInt16 = 9993
     private var pollTask: Task<Void, Never>?
 
+    /// How long a single attempt is allowed to sit waiting for a connection
+    /// before we give up on it. Without this, a dropped/unreachable deck can
+    /// leave the NWConnection parked in `.waiting` indefinitely (it doesn't
+    /// always transition to `.failed` on its own) — which left `isBusy`
+    /// stuck `true` forever and made the Record/Stop/Format buttons look
+    /// frozen.
+    private static let commandTimeout: Duration = .seconds(4)
+
+    /// A single dropped packet or momentary Wi-Fi blip shouldn't surface as
+    /// a hard failure to the person clicking the button — retry a couple
+    /// times with a short pause before actually reporting an error.
+    private static let maxAttempts = 3
+    private static let retryDelay: Duration = .seconds(1)
+
     init(host: String) {
         self.host = host
     }
@@ -104,53 +118,52 @@ final class HyperDeckService: ObservableObject {
 
     // MARK: - Private Networking
 
-    /// Opens a fresh TCP connection, sends a command, and closes.
+    /// Sends a command, retrying a couple of times if a single attempt
+    /// times out or the connection drops, before finally reporting failure.
     private func send(command: String) async {
         isBusy = true
-        lastError = nil
         defer { isBusy = false }
 
-        guard let portObj = NWEndpoint.Port(rawValue: port) else { return }
-        let connection = NWConnection(
-            host: NWEndpoint.Host(host),
-            port: portObj,
-            using: .tcp
-        )
-
-        await withCheckedContinuation { continuation in
-            connection.stateUpdateHandler = { [weak self] state in
-                guard let self else { return }
-                switch state {
-                case .ready:
-                    let data = Data(command.utf8)
-                    connection.send(content: data, completion: .contentProcessed { error in
-                        connection.cancel()
-                        if let error {
-                            Task { @MainActor in self.lastError = error.localizedDescription }
-                        }
-                        continuation.resume()
-                    })
-                case .failed(let error):
-                    Task { @MainActor in
-                        self.lastError = error.localizedDescription
-                        self.isConnected = false
-                    }
-                    continuation.resume()
-                default:
-                    break
-                }
+        for attempt in 1...Self.maxAttempts {
+            lastError = nil
+            if await attemptSendAndReceive(command: command, readResponse: false) != nil {
+                isConnected = true
+                return
             }
-            connection.start(queue: .global(qos: .userInitiated))
+            if attempt < Self.maxAttempts {
+                try? await Task.sleep(for: Self.retryDelay)
+            }
         }
+        isConnected = false
     }
 
-    /// Opens a TCP connection, sends a command, reads the response, and closes.
+    /// Sends a command and reads the response, retrying a couple of times
+    /// if a single attempt times out or the connection drops. Returns ""
+    /// only once every attempt has failed.
     private func sendAndReceive(command: String) async -> String {
         isBusy = true
-        lastError = nil
         defer { isBusy = false }
 
-        guard let portObj = NWEndpoint.Port(rawValue: port) else { return "" }
+        for attempt in 1...Self.maxAttempts {
+            lastError = nil
+            if let response = await attemptSendAndReceive(command: command, readResponse: true) {
+                isConnected = true
+                return response
+            }
+            if attempt < Self.maxAttempts {
+                try? await Task.sleep(for: Self.retryDelay)
+            }
+        }
+        isConnected = false
+        return ""
+    }
+
+    /// A single connect → send → (optionally) read attempt. Returns nil on
+    /// any failure (connection error or timeout) so the caller can decide
+    /// whether to retry; returns the response text (empty string if
+    /// `readResponse` is false) on success.
+    private func attemptSendAndReceive(command: String, readResponse: Bool) async -> String? {
+        guard let portObj = NWEndpoint.Port(rawValue: port) else { return nil }
         let connection = NWConnection(
             host: NWEndpoint.Host(host),
             port: portObj,
@@ -159,6 +172,11 @@ final class HyperDeckService: ObservableObject {
 
         return await withCheckedContinuation { continuation in
             nonisolated(unsafe) var resumed = false
+            let resumeOnce: @Sendable (String?) -> Void = { value in
+                guard !resumed else { return }
+                resumed = true
+                continuation.resume(returning: value)
+            }
 
             connection.stateUpdateHandler = { [weak self] state in
                 guard let self else { return }
@@ -167,28 +185,40 @@ final class HyperDeckService: ObservableObject {
                     let data = Data(command.utf8)
                     connection.send(content: data, completion: .contentProcessed { error in
                         if let error {
+                            connection.cancel()
                             Task { @MainActor in self.lastError = error.localizedDescription }
-                            if !resumed { resumed = true; continuation.resume(returning: "") }
+                            resumeOnce(nil)
+                            return
+                        }
+                        guard readResponse else {
+                            connection.cancel()
+                            resumeOnce("")
                             return
                         }
                         // Read response (up to 4 KB)
                         connection.receive(minimumIncompleteLength: 1, maximumLength: 4096) { data, _, _, _ in
                             connection.cancel()
                             let response = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
-                            if !resumed { resumed = true; continuation.resume(returning: response) }
+                            resumeOnce(response)
                         }
                     })
                 case .failed(let error):
-                    Task { @MainActor in
-                        self.lastError = error.localizedDescription
-                        self.isConnected = false
-                    }
-                    if !resumed { resumed = true; continuation.resume(returning: "") }
+                    connection.cancel()
+                    Task { @MainActor in self.lastError = error.localizedDescription }
+                    resumeOnce(nil)
                 default:
                     break
                 }
             }
             connection.start(queue: .global(qos: .userInitiated))
+
+            Task {
+                try? await Task.sleep(for: Self.commandTimeout)
+                guard !resumed else { return }
+                connection.cancel()
+                await MainActor.run { self.lastError = "Timed out — device didn't respond" }
+                resumeOnce(nil)
+            }
         }
     }
 

@@ -209,21 +209,17 @@ final class WorkflowEngine: ObservableObject {
             updateTask(id: task.id, phase: .downloading, syncProgress: 0)
             appState.log("  ⬇ Downloading \(fileName)...")
 
-            var result = await FTPService.downloadFile(
+            // FTPService.downloadFile already retries transient failures
+            // internally (dropped connection, stalled transfer), cleaning up
+            // any partial file between attempts — so a single call here
+            // already reflects the outcome after those retries.
+            let result = await FTPService.downloadFile(
                 named: fileName, from: deck, to: destURL
             ) { [weak self] pct in Task { @MainActor in self?.updateTask(id: task.id, syncProgress: pct) } }
 
-            if !result.success {
-                appState.log("  ↩ Retrying \(fileName)... (\(result.failureReason ?? "unknown error"))")
-                try? FileManager.default.removeItem(at: destURL)
-                result = await FTPService.downloadFile(
-                    named: fileName, from: deck, to: destURL
-                ) { [weak self] pct in Task { @MainActor in self?.updateTask(id: task.id, syncProgress: pct) } }
-            }
-
             guard result.success else {
                 let reason = result.failureReason ?? "unknown error"
-                updateTask(id: task.id, phase: .error, errorMessage: "Download failed after retry: \(reason)")
+                updateTask(id: task.id, phase: .error, errorMessage: "Download failed after retries: \(reason)")
                 appState.log("  ❌ Download failed: \(fileName) — \(reason)")
                 appState.currentRunErrors += 1
                 continue
@@ -397,12 +393,12 @@ final class WorkflowEngine: ObservableObject {
     // MARK: - Format step
 
     private func runFormat(context: inout StepContext) async {
-        appState.log("  🗑 Formatting \(context.deck.name) (\(context.deck.ipAddress))...")
+        appState.log("  🗑 Erasing \(context.deck.name)'s drive (\(context.deck.ipAddress))...")
         do {
             try await HyperDeckService.formatDrive(deck: context.deck)
-            appState.log("  ✅ \(context.deck.name) formatted successfully")
+            appState.log("  ✅ \(context.deck.name)'s drive erased successfully")
         } catch {
-            appState.log("  ❌ \(context.deck.name) format failed: \(error.localizedDescription)")
+            appState.log("  ❌ \(context.deck.name) drive erase failed: \(error.localizedDescription)")
             appState.currentRunErrors += 1
         }
     }
@@ -412,7 +408,7 @@ final class WorkflowEngine: ObservableObject {
     private func runCleanup(context: inout StepContext, retentionDays: Int) async {
         let cutoff = Date().addingTimeInterval(-Double(retentionDays) * 86400)
         let base = context.destDir
-        appState.log("  🧹 Cleaning files older than \(retentionDays) day(s)...")
+        appState.log("  🧹 Cleaning destination folder — removing files older than \(retentionDays) day(s)...")
 
         let deletedCount = await Task.detached(priority: .background) {
             let fm = FileManager.default

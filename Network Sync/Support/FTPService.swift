@@ -26,6 +26,18 @@ struct FTPService {
         case inconclusive   // couldn't tell (timeout, network error, etc.)
     }
 
+    /// Exit codes that indicate a transient connectivity hiccup rather than
+    /// a definitive answer — worth retrying a couple of times before giving
+    /// up. Codes like 67 (bad login) or 9 (path denied) are real answers
+    /// and retrying them would just waste time.
+    private static let retryableCurlExitCodes: Set<Int32> = [
+        -1,  // couldn't even launch curl
+        7,   // couldn't connect to host
+        28,  // operation timed out (connect or --max-time/--speed-time)
+    ]
+    private static let maxTransientAttempts = 3
+    private static let transientRetryDelay: Duration = .seconds(1)
+
     /// Confirms the deck's stored username/password can actually log in and
     /// list its configured remote path.
     static func probeAuth(on deck: HyperDeck) async -> AuthResult {
@@ -36,7 +48,9 @@ struct FTPService {
         let (_, exitCode) = await runProcessWithExitCode(
             executable: "/usr/bin/curl",
             args: ["--user", "\(deck.username):\(deck.password)",
-                   "--connect-timeout", "5", "-s", "--list-only", url]
+                   "--connect-timeout", "5", "--max-time", "15",
+                   "-s", "--list-only", url],
+            retryOn: retryableCurlExitCodes
         )
 
         switch exitCode {
@@ -57,10 +71,11 @@ struct FTPService {
         // No --list-only here: that returns bare filenames only. We want the
         // full "ls -l" style listing so we can read real file sizes and tell
         // directories from files without guessing from the name.
-        let output = await runProcess(
+        let (output, _) = await runProcessWithExitCode(
             executable: "/usr/bin/curl",
             args: ["--user", "\(deck.username):\(deck.password)",
-                   "--connect-timeout", "5", "-s", url]
+                   "--connect-timeout", "5", "--max-time", "15", "-s", url],
+            retryOn: retryableCurlExitCodes
         )
         return parseFTPListing(from: output, basePath: path, deck: deck)
     }
@@ -71,10 +86,11 @@ struct FTPService {
             .addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? deck.remotePath
         let url = "ftp://\(deck.ipAddress)/\(encoded)/"
 
-        let output = await runProcess(
+        let (output, _) = await runProcessWithExitCode(
             executable: "/usr/bin/curl",
             args: ["--user", "\(deck.username):\(deck.password)",
-                   "--connect-timeout", "5", "-s", url]
+                   "--connect-timeout", "5", "--max-time", "15", "-s", url],
+            retryOn: retryableCurlExitCodes
         )
         return parseMovFiles(from: output)
     }
@@ -93,7 +109,29 @@ struct FTPService {
     }
 
     // MARK: - Download a single file with progress callback (0.0–1.0)
+    // Retries a couple of times on a transient failure (dropped connection,
+    // stalled transfer) before finally reporting it as failed — a single
+    // Wi-Fi blip shouldn't fail the whole file. Each retry removes whatever
+    // partial file was left behind and starts the download over.
     static func downloadFile(
+        named fileName: String,
+        from deck: HyperDeck,
+        to destinationURL: URL,
+        progress: @escaping @Sendable (Double) -> Void
+    ) async -> DownloadResult {
+        var last = DownloadResult.failed("Unknown error")
+        for attempt in 1...maxTransientAttempts {
+            last = await downloadFileOnce(named: fileName, from: deck, to: destinationURL, progress: progress)
+            if last.success { return last }
+            try? FileManager.default.removeItem(at: destinationURL)
+            if attempt < maxTransientAttempts {
+                try? await Task.sleep(for: transientRetryDelay)
+            }
+        }
+        return last
+    }
+
+    private static func downloadFileOnce(
         named fileName: String,
         from deck: HyperDeck,
         to destinationURL: URL,
@@ -114,6 +152,13 @@ struct FTPService {
             process.arguments = [
                 "--user", "\(deck.username):\(deck.password)",
                 "--connect-timeout", "10",
+                // --connect-timeout only bounds the initial connection — a
+                // transfer that starts fine but then stalls mid-download
+                // (deck drops off Wi-Fi, cable pulled, etc.) would otherwise
+                // hang forever. --speed-limit/--speed-time make curl abort
+                // once throughput stays below 1 KB/s for 20 seconds straight.
+                "--speed-limit", "1024",
+                "--speed-time", "20",
                 "--progress-bar",
                 "-o", destinationURL.path,
                 url
@@ -185,8 +230,27 @@ struct FTPService {
     }
 
     /// Same as `runProcess`, but also surfaces the exit code so callers can
-    /// distinguish "reachable" from "reachable but denied".
+    /// distinguish "reachable" from "reachable but denied". If `retryOn`
+    /// contains the exit code the process comes back with, retries a
+    /// couple more times (short pause in between) before returning —
+    /// a single dropped packet shouldn't make an otherwise-healthy device
+    /// look offline or empty.
     private static func runProcessWithExitCode(
+        executable: String, args: [String], retryOn: Set<Int32> = []
+    ) async -> (output: String, exitCode: Int32) {
+        var last: (output: String, exitCode: Int32) = ("", -1)
+        let attempts = retryOn.isEmpty ? 1 : maxTransientAttempts
+        for attempt in 1...attempts {
+            last = await runProcessOnce(executable: executable, args: args)
+            guard retryOn.contains(last.exitCode) else { return last }
+            if attempt < attempts {
+                try? await Task.sleep(for: transientRetryDelay)
+            }
+        }
+        return last
+    }
+
+    private static func runProcessOnce(
         executable: String, args: [String]
     ) async -> (output: String, exitCode: Int32) {
         await withCheckedContinuation { continuation in

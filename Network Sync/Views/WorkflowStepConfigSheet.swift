@@ -52,7 +52,7 @@ struct WorkflowStepConfigSheet: View {
                     renameFields
 
                 case .format:
-                    Label("This will permanently erase all files on the device.", systemImage: "exclamationmark.triangle.fill")
+                    Label("This step erases the device's drive. All footage still on it will be permanently deleted — this cannot be undone.", systemImage: "exclamationmark.triangle.fill")
                         .font(.callout).foregroundStyle(.red)
 
                 case .cleanup:
@@ -158,13 +158,22 @@ struct WorkflowStepConfigSheet: View {
     }
 
     private var cleanupFields: some View {
-        LabeledContent("Retention") {
-            Stepper("\(retentionDays) day\(retentionDays == 1 ? "" : "s")", value: $retentionDays, in: 1...365)
+        Group {
+            LabeledContent("Retention") {
+                Stepper("\(retentionDays) day\(retentionDays == 1 ? "" : "s")", value: $retentionDays, in: 1...365)
+            }
+            Text("Deletes files older than this from the workflow's destination folder — not from the device itself.")
+                .font(.caption).foregroundStyle(.secondary)
         }
     }
 
     private var notifyFields: some View {
         Group {
+            if GmailAuthService.shared.connectedEmail == nil {
+                Label("No Gmail account connected — this step won't be able to send email. Connect one in Settings.", systemImage: "exclamationmark.triangle.fill")
+                    .font(.callout).foregroundStyle(.orange)
+            }
+
             Section {
                 LabeledContent("Header") {
                     TextField("e.g. Sync Complete", text: $notifyHeader)

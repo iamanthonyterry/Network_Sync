@@ -102,8 +102,8 @@ struct WorkflowEditorSheet: View {
                 Text("Add steps below to build your workflow.")
                     .font(.caption).foregroundStyle(.secondary)
             } else {
-                ForEach(steps) { step in
-                    stepRow(step)
+                ForEach(Array(steps.enumerated()), id: \.element.id) { index, step in
+                    stepRow(step, index: index)
                 }
                 .onMove { steps.move(fromOffsets: $0, toOffset: $1) }
                 .onDelete { steps.remove(atOffsets: $0) }
@@ -117,7 +117,7 @@ struct WorkflowEditorSheet: View {
         }
     }
 
-    private func stepRow(_ step: WorkflowStep) -> some View {
+    private func stepRow(_ step: WorkflowStep, index: Int) -> some View {
         HStack(spacing: 10) {
             Image(systemName: step.kind.icon)
                 .foregroundStyle(step.kind.color)
@@ -127,10 +127,40 @@ struct WorkflowEditorSheet: View {
                 Text(step.action.summary).font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
+
+            VStack(spacing: 0) {
+                Button {
+                    guard index > 0 else { return }
+                    steps.move(fromOffsets: IndexSet(integer: index), toOffset: index - 1)
+                } label: {
+                    Image(systemName: "chevron.up")
+                }
+                .buttonStyle(.borderless)
+                .disabled(index == 0)
+
+                Button {
+                    guard index < steps.count - 1 else { return }
+                    steps.move(fromOffsets: IndexSet(integer: index), toOffset: index + 2)
+                } label: {
+                    Image(systemName: "chevron.down")
+                }
+                .buttonStyle(.borderless)
+                .disabled(index == steps.count - 1)
+            }
+            .font(.caption)
+
             Button {
                 editingStep = step
             } label: {
                 Image(systemName: "slider.horizontal.3")
+            }
+            .buttonStyle(.borderless)
+
+            Button {
+                steps.remove(at: index)
+            } label: {
+                Image(systemName: "trash")
+                    .foregroundStyle(.red)
             }
             .buttonStyle(.borderless)
         }

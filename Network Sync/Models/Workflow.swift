@@ -26,8 +26,8 @@ enum StepKind: String, Codable, CaseIterable, Identifiable {
         case .sync:    return "Download new files from the device"
         case .convert: return "Transcode files to MP4"
         case .rename:  return "Rename files using a pattern"
-        case .format:  return "Erase the device's drive"
-        case .cleanup: return "Delete files older than N days"
+        case .format:  return "Permanently erase the device's drive"
+        case .cleanup: return "Delete files older than N days in the destination folder"
         case .notify:  return "Send an email"
         }
     }
@@ -107,9 +107,9 @@ enum StepAction: Codable, Hashable {
         case .rename(let pattern):
             return "Pattern: \(pattern)"
         case .format:
-            return "Permanently erases all files on the device"
+            return "Erases the device's drive — cannot be undone"
         case .cleanup(let days):
-            return "Deletes files older than \(days) day\(days == 1 ? "" : "s")"
+            return "Deletes files older than \(days) day\(days == 1 ? "" : "s") in the destination folder"
         case .notify(let header, _, let recipients):
             let who = recipients.isEmpty ? "no recipients set" : "\(recipients.count) recipient\(recipients.count == 1 ? "" : "s")"
             return "\"\(header)\" → \(who)"
