@@ -1,10 +1,19 @@
 import SwiftUI
 
+// MARK: - Dashboard Selection
+// Identifies whichever device is currently selected in the left-hand list,
+// so the right-hand pane knows which settings to show.
+enum DashboardSelection: Hashable {
+    case deck(UUID)
+    case switcher(UUID)
+    case cloudStore(UUID)
+}
+
 // MARK: - DashboardView
 // Home base: shows every configured device (HyperDecks, ATEM Switchers,
 // Cloud Stores) plus anything found on the network, all in one place.
-// Add, edit, and delete devices here; run a workflow against a single
-// HyperDeck right from its card via "Run Workflow".
+// Two columns: the left lists every device with quick controls, and the
+// right shows the settings and controls for whichever device is selected.
 
 struct DashboardView: View {
     @EnvironmentObject var appState: AppState
@@ -15,6 +24,7 @@ struct DashboardView: View {
     @State private var showingAddDeck = false
     @State private var showingAddSwitcher = false
     @State private var showingAddCloudStore = false
+    @State private var selection: DashboardSelection?
 
     var activeCount: Int  { appState.activeTasks.filter { $0.phase == .downloading || $0.phase == .converting }.count }
     var doneCount: Int    { appState.activeTasks.filter { $0.phase == .done }.count }
@@ -40,7 +50,13 @@ struct DashboardView: View {
             if totalDevices == 0 && !hasDiscovered {
                 emptyState
             } else {
-                deviceGrid
+                HStack(spacing: 0) {
+                    deviceList
+                        .frame(width: 300)
+                    Divider()
+                    detailPane
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
             }
 
             Divider()
@@ -137,45 +153,84 @@ struct DashboardView: View {
         }
     }
 
-    // MARK: - Device Grid
-    private var deviceGrid: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                if !appState.hyperDecks.isEmpty {
-                    sectionHeader("HyperDecks")
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 270))], spacing: 16) {
-                        ForEach(appState.hyperDecks) { deck in
-                            DeckCardView(deck: deck)
-                        }
+    // MARK: - Left column: device list
+    private var deviceList: some View {
+        List(selection: $selection) {
+            if !appState.hyperDecks.isEmpty {
+                Section("HyperDecks") {
+                    ForEach(appState.hyperDecks) { deck in
+                        DeckListRow(deck: deck)
+                            .tag(DashboardSelection.deck(deck.id))
                     }
                 }
-
-                if !appState.switchers.isEmpty {
-                    sectionHeader("ATEM Switchers")
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 270))], spacing: 16) {
-                        ForEach(appState.switchers) { switcher in
-                            SwitcherCardView(switcher: switcher)
-                        }
-                    }
-                }
-
-                if !appState.cloudStores.isEmpty {
-                    sectionHeader("Cloud Stores")
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 270))], spacing: 16) {
-                        ForEach(appState.cloudStores) { store in
-                            CloudStoreCardView(store: store)
-                        }
-                    }
-                }
-
-                discoveredSection
             }
-            .padding()
+
+            if !appState.switchers.isEmpty {
+                Section("ATEM Switchers") {
+                    ForEach(appState.switchers) { switcher in
+                        SwitcherListRow(switcher: switcher)
+                            .tag(DashboardSelection.switcher(switcher.id))
+                    }
+                }
+            }
+
+            if !appState.cloudStores.isEmpty {
+                Section("Cloud Stores") {
+                    ForEach(appState.cloudStores) { store in
+                        CloudStoreListRow(store: store)
+                            .tag(DashboardSelection.cloudStore(store.id))
+                    }
+                }
+            }
+
+            discoveredSection
+        }
+        .listStyle(.sidebar)
+    }
+
+    // MARK: - Right column: selected device's settings
+    @ViewBuilder private var detailPane: some View {
+        switch selection {
+        case .deck(let id):
+            if let deck = appState.hyperDecks.first(where: { $0.id == id }) {
+                DeckDetailPane(deck: deck)
+                    .id(deck.id)
+            } else {
+                emptyDetailState
+            }
+        case .switcher(let id):
+            if let switcher = appState.switchers.first(where: { $0.id == id }) {
+                SwitcherDetailPane(switcher: switcher)
+                    .id(switcher.id)
+            } else {
+                emptyDetailState
+            }
+        case .cloudStore(let id):
+            if let store = appState.cloudStores.first(where: { $0.id == id }) {
+                CloudStoreDetailPane(store: store)
+                    .id(store.id)
+            } else {
+                emptyDetailState
+            }
+        case .none:
+            emptyDetailState
         }
     }
 
-    private func sectionHeader(_ title: String) -> some View {
-        Text(title).font(.headline).foregroundStyle(.secondary)
+    private var emptyDetailState: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "sidebar.right")
+                .font(.system(size: 36))
+                .foregroundStyle(.secondary)
+            Text("Select a device")
+                .font(.headline)
+            Text("Choose a device on the left to view its settings and controls.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding()
     }
 
     // MARK: - Discovered on network
@@ -191,8 +246,7 @@ struct DashboardView: View {
         }
 
         if !newDecks.isEmpty || !newSwitchers.isEmpty || !newStores.isEmpty {
-            sectionHeader("Discovered on Network")
-            VStack(spacing: 8) {
+            Section("Discovered on Network") {
                 ForEach(newDecks) { deck in
                     DiscoveredDeviceRow(name: deck.name, ip: deck.ipAddress, icon: "server.rack") {
                         appState.addDeck(deck)
