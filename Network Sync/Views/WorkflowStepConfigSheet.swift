@@ -191,6 +191,29 @@ struct WorkflowStepConfigSheet: View {
                             RoundedRectangle(cornerRadius: 6)
                                 .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
                         )
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Available variables").font(.caption).bold()
+                            .padding(.top, 4)
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack {
+                                Text("{workflow_name}").font(.system(.caption, design: .monospaced))
+                                Text("The name of the current workflow").font(.caption).foregroundStyle(.secondary)
+                            }
+                            HStack {
+                                Text("{time_taken}").font(.system(.caption, design: .monospaced))
+                                Text("Time elapsed since start (e.g. 1m 30s)").font(.caption).foregroundStyle(.secondary)
+                            }
+                            HStack {
+                                Text("{file_names}").font(.system(.caption, design: .monospaced))
+                                Text("Files processed (list in body, comma-separated in header)").font(.caption).foregroundStyle(.secondary)
+                            }
+                            HStack {
+                                Text("{recipient_name}").font(.system(.caption, design: .monospaced))
+                                Text("The recipient's name").font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
                 }
             }
 

@@ -7,7 +7,7 @@ struct ContentView: View {
     enum NavItem: String, Hashable, CaseIterable {
         case dashboard = "Dashboard"
         case workflows = "Workflows"
-        case storage   = "Storage"
+        case storage   = "View Content"
         case history   = "History"
         case settings  = "Settings"
 

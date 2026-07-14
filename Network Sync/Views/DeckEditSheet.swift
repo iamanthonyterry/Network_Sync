@@ -93,7 +93,7 @@ struct DeckEditSheet: View {
                             Text("GB")
                         }
                     }
-                    Text("The deck can't report its disk size over the network, so enter it here to show a used/total storage indicator on the Storage page.")
+                    Text("The deck can't report its disk size over the network, so enter it here to show a used/total storage indicator on the View Content page.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

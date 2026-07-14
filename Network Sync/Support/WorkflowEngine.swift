@@ -16,6 +16,7 @@ final class WorkflowEngine: ObservableObject {
         let deck: HyperDeck
         let destDir: URL
         var files: [URL] = []
+        let workflowName: String
     }
 
     // MARK: - Run (all target devices)
@@ -60,7 +61,7 @@ final class WorkflowEngine: ObservableObject {
             }
 
             guard workflow.needsDestinationMount else {
-                var context = StepContext(deck: deck, destDir: URL(fileURLWithPath: "/dev/null"))
+                var context = StepContext(deck: deck, destDir: URL(fileURLWithPath: "/dev/null"), workflowName: workflow.name)
                 appState.log("— \(deck.name) —")
                 for step in workflow.steps {
                     guard appState.isRunning else { break }
@@ -80,7 +81,7 @@ final class WorkflowEngine: ObservableObject {
             }
             try? FileManager.default.createDirectory(at: destDir, withIntermediateDirectories: true)
 
-            var context = StepContext(deck: deck, destDir: destDir)
+            var context = StepContext(deck: deck, destDir: destDir, workflowName: workflow.name)
             appState.log("— \(deck.name) —")
 
             for step in workflow.steps {
@@ -148,7 +149,7 @@ final class WorkflowEngine: ObservableObject {
             }
 
             if !toConvert.isEmpty {
-                var context = StepContext(deck: deck, destDir: destDir, files: toConvert)
+                var context = StepContext(deck: deck, destDir: destDir, files: toConvert, workflowName: "Retry Failed")
                 await runConvert(context: &context, preset: appState.conversionSettings.preset, deleteOriginal: true)
             }
         }
@@ -451,9 +452,54 @@ final class WorkflowEngine: ObservableObject {
             return
         }
 
-        appState.log("  ✉️ Sending notification \"\(header)\" to \(recipients.count) recipient(s)...")
-        let addresses = recipients.map(\.email)
-        let failed = await GmailSendService.sendIndividually(to: addresses, subject: header, body: message)
+        // Apply template variables
+        let duration = Date().timeIntervalSince(appState.currentRunStart)
+        let totalSeconds = Int(duration)
+        let mins = totalSeconds / 60
+        let secs = totalSeconds % 60
+        let timeTakenStr = mins > 0 ? "\(mins)m \(secs)s" : "\(secs)s"
+
+        let fileNamesHeader = context.files.isEmpty ? "no files" : context.files.map(\.lastPathComponent).joined(separator: ", ")
+        let fileNamesBody = context.files.isEmpty ? "No files" : context.files.map { "- \($0.lastPathComponent)" }.joined(separator: "\n")
+
+        let resolvedHeader = header
+            .replacingOccurrences(of: "{workflow_name}", with: context.workflowName)
+            .replacingOccurrences(of: "{workflow}", with: context.workflowName)
+            .replacingOccurrences(of: "{time_taken}", with: timeTakenStr)
+            .replacingOccurrences(of: "{file_names}", with: fileNamesHeader)
+
+        let resolvedMessage = message
+            .replacingOccurrences(of: "{workflow_name}", with: context.workflowName)
+            .replacingOccurrences(of: "{workflow}", with: context.workflowName)
+            .replacingOccurrences(of: "{time_taken}", with: timeTakenStr)
+            .replacingOccurrences(of: "{file_names}", with: fileNamesBody)
+
+        appState.log("  ✉️ Sending notification \"\(resolvedHeader)\" to \(recipients.count) recipient(s)...")
+        var failed: [(recipient: String, reason: String)] = []
+
+        for recipient in recipients {
+            let recipientHeader = resolvedHeader
+                .replacingOccurrences(of: "{recipient_name}", with: recipient.name)
+                .replacingOccurrences(of: "{name}", with: recipient.name)
+
+            let recipientMessage = resolvedMessage
+                .replacingOccurrences(of: "{recipient_name}", with: recipient.name)
+                .replacingOccurrences(of: "{name}", with: recipient.name)
+
+            do {
+                try await GmailSendService.send(to: [recipient.email], subject: recipientHeader, body: recipientMessage)
+            } catch {
+                let reason: String
+                if case GmailSendService.SendError.requestFailed(let message) = error {
+                    reason = message
+                } else if case GmailSendService.SendError.notConnected = error {
+                    reason = "Gmail account not connected"
+                } else {
+                    reason = error.localizedDescription
+                }
+                failed.append((recipient.email, reason))
+            }
+        }
 
         if failed.isEmpty {
             appState.log("  ✅ Notification sent")
