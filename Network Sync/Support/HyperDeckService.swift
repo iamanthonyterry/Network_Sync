@@ -80,8 +80,35 @@ final class HyperDeckService: ObservableObject {
     }
 
     /// Formats the active slot. This is destructive — caller should confirm first.
+    ///
+    /// The HyperDeck Ethernet protocol treats `format` as a two-step handshake:
+    /// the initial command only returns a `format token`, and nothing on the
+    /// deck actually gets erased until that token is echoed back via
+    /// `format confirm:`. Sending just the first command (as this used to do)
+    /// leaves the deck waiting for a confirmation that never comes, so the
+    /// button looked like it did nothing.
     func formatDrive(filesystem: String = "HFS+") async {
-        await send(command: "format filesystem: \(filesystem)\n")
+        let readyResponse = await sendAndReceive(command: "format filesystem: \(filesystem)\n")
+        guard let token = formatToken(from: readyResponse) else {
+            if lastError == nil {
+                lastError = "Format failed — deck didn't return a confirmation token"
+            }
+            return
+        }
+        _ = await sendAndReceive(command: "format confirm: \(token)\n")
+    }
+
+    /// Pulls the `format token: <value>` line out of the deck's
+    /// "216 format ready" response so it can be echoed back to confirm.
+    private func formatToken(from response: String) -> String? {
+        for line in response.components(separatedBy: .newlines) {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.lowercased().hasPrefix("format token:") {
+                return trimmed.split(separator: ":", maxSplits: 1).last?
+                    .trimmingCharacters(in: .whitespaces)
+            }
+        }
+        return nil
     }
 
     /// Convenience: create a one-shot connection, format, and discard.
