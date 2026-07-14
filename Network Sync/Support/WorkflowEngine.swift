@@ -53,6 +53,7 @@ final class WorkflowEngine: ObservableObject {
         // shared global destination — mount every distinct store exactly
         // once and reuse the resolved path for every deck that needs it.
         var mountedPaths: [UUID?: String] = [:]
+        var allProcessedFiles: [URL] = []
 
         for deck in decks {
             guard appState.isRunning else { break }
@@ -65,8 +66,12 @@ final class WorkflowEngine: ObservableObject {
                 appState.log("— \(deck.name) —")
                 for step in workflow.steps {
                     guard appState.isRunning else { break }
+                    if case .notify(_, _, _, let sendPerDrive) = step.action, !sendPerDrive {
+                        continue
+                    }
                     await execute(step, context: &context)
                 }
+                allProcessedFiles.append(contentsOf: context.files)
                 continue
             }
 
@@ -86,7 +91,33 @@ final class WorkflowEngine: ObservableObject {
 
             for step in workflow.steps {
                 guard appState.isRunning else { break }
+                if case .notify(_, _, _, let sendPerDrive) = step.action, !sendPerDrive {
+                    continue
+                }
                 await execute(step, context: &context)
+            }
+            allProcessedFiles.append(contentsOf: context.files)
+        }
+
+        // Send workflow-wide notifications (single email for the entire workflow)
+        let workflowWideNotifySteps = workflow.steps.filter {
+            if case .notify(_, _, _, let sendPerDrive) = $0.action {
+                return !sendPerDrive
+            }
+            return false
+        }
+
+        if !workflowWideNotifySteps.isEmpty && appState.isRunning {
+            var workflowContext = StepContext(
+                deck: decks.first ?? HyperDeck(name: "Workflow", ipAddress: ""),
+                destDir: URL(fileURLWithPath: "/dev/null"),
+                files: allProcessedFiles,
+                workflowName: workflow.name
+            )
+            for step in workflowWideNotifySteps {
+                if case .notify(let header, let message, let recipients, _) = step.action {
+                    await runNotify(context: &workflowContext, header: header, message: message, recipients: recipients)
+                }
             }
         }
 
@@ -174,7 +205,7 @@ final class WorkflowEngine: ObservableObject {
             await runFormat(context: &context)
         case .cleanup(let retentionDays):
             await runCleanup(context: &context, retentionDays: retentionDays)
-        case .notify(let header, let message, let recipients):
+        case .notify(let header, let message, let recipients, _):
             await runNotify(context: &context, header: header, message: message, recipients: recipients)
         }
     }

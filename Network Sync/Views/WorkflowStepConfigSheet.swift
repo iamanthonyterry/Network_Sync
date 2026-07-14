@@ -16,6 +16,7 @@ struct WorkflowStepConfigSheet: View {
     @State private var notifyHeader = ""
     @State private var notifyMessage = ""
     @State private var notifyRecipients: [NotificationRecipient] = []
+    @State private var notifySendPerDrive = true
     @State private var showingAddRecipient = false
 
     var body: some View {
@@ -174,6 +175,14 @@ struct WorkflowStepConfigSheet: View {
                     .font(.callout).foregroundStyle(.orange)
             }
 
+            Section("Delivery Options") {
+                Picker("Send Options", selection: $notifySendPerDrive) {
+                    Text("Individual email per drive completed").tag(true)
+                    Text("Single email for entire workflow").tag(false)
+                }
+                .pickerStyle(.radioGroup)
+            }
+
             Section {
                 LabeledContent("Header") {
                     TextField("e.g. Sync Complete", text: $notifyHeader)
@@ -276,10 +285,11 @@ struct WorkflowStepConfigSheet: View {
             pattern = pat
         case .cleanup(let days):
             retentionDays = days
-        case .notify(let header, let message, let recipients):
+        case .notify(let header, let message, let recipients, let sendPerDrive):
             notifyHeader = header
             notifyMessage = message
             notifyRecipients = recipients
+            notifySendPerDrive = sendPerDrive
         }
     }
 
@@ -295,7 +305,8 @@ struct WorkflowStepConfigSheet: View {
             step.action = .notify(
                 header: notifyHeader.isEmpty ? "Workflow update" : notifyHeader,
                 message: notifyMessage,
-                recipients: notifyRecipients
+                recipients: notifyRecipients,
+                sendPerDrive: notifySendPerDrive
             )
         }
         dismiss()

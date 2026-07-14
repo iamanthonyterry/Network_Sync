@@ -59,14 +59,14 @@ enum StepKind: String, Codable, CaseIterable, Identifiable {
 
 // MARK: - Step Action
 // Each case carries only the configuration that step needs.
-enum StepAction: Codable, Hashable {
+enum StepAction: Hashable {
     case record(stopAfterMinutes: Int?)
     case sync
     case convert(preset: ConversionSettings.FFmpegPreset, deleteOriginal: Bool)
     case rename(pattern: String)
     case format
     case cleanup(retentionDays: Int)
-    case notify(header: String, message: String, recipients: [NotificationRecipient])
+    case notify(header: String, message: String, recipients: [NotificationRecipient], sendPerDrive: Bool)
 
     var kind: StepKind {
         switch self {
@@ -88,7 +88,7 @@ enum StepAction: Codable, Hashable {
         case .rename:  return .rename(pattern: "{device}_{date}_{index}")
         case .format:  return .format
         case .cleanup: return .cleanup(retentionDays: 30)
-        case .notify:  return .notify(header: "Workflow update", message: "", recipients: [])
+        case .notify:  return .notify(header: "Workflow update", message: "", recipients: [], sendPerDrive: true)
         }
     }
 
@@ -110,9 +110,103 @@ enum StepAction: Codable, Hashable {
             return "Erases the device's drive — cannot be undone"
         case .cleanup(let days):
             return "Deletes files older than \(days) day\(days == 1 ? "" : "s") in the destination folder"
-        case .notify(let header, _, let recipients):
+        case .notify(let header, _, let recipients, let sendPerDrive):
             let who = recipients.isEmpty ? "no recipients set" : "\(recipients.count) recipient\(recipients.count == 1 ? "" : "s")"
-            return "\"\(header)\" → \(who)"
+            let mode = sendPerDrive ? "per drive" : "entire workflow"
+            return "\"\(header)\" → \(who) (\(mode))"
+        }
+    }
+}
+
+// MARK: - StepAction Codable Implementation
+extension StepAction: Codable {
+    enum CodingKeys: String, CodingKey {
+        case record, sync, convert, rename, format, cleanup, notify
+    }
+
+    enum RecordKeys: String, CodingKey {
+        case stopAfterMinutes
+    }
+
+    enum ConvertKeys: String, CodingKey {
+        case preset, deleteOriginal
+    }
+
+    enum RenameKeys: String, CodingKey {
+        case pattern
+    }
+
+    enum CleanupKeys: String, CodingKey {
+        case retentionDays
+    }
+
+    enum NotifyKeys: String, CodingKey {
+        case header, message, recipients, sendPerDrive
+    }
+
+    private enum DummyKeys: CodingKey {}
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        if container.contains(.record) {
+            let nested = try container.nestedContainer(keyedBy: RecordKeys.self, forKey: .record)
+            let stop = try nested.decodeIfPresent(Int.self, forKey: .stopAfterMinutes)
+            self = .record(stopAfterMinutes: stop)
+        } else if container.contains(.sync) {
+            self = .sync
+        } else if container.contains(.convert) {
+            let nested = try container.nestedContainer(keyedBy: ConvertKeys.self, forKey: .convert)
+            let preset = try nested.decode(ConversionSettings.FFmpegPreset.self, forKey: .preset)
+            let deleteOriginal = try nested.decode(Bool.self, forKey: .deleteOriginal)
+            self = .convert(preset: preset, deleteOriginal: deleteOriginal)
+        } else if container.contains(.rename) {
+            let nested = try container.nestedContainer(keyedBy: RenameKeys.self, forKey: .rename)
+            let pattern = try nested.decode(String.self, forKey: .pattern)
+            self = .rename(pattern: pattern)
+        } else if container.contains(.format) {
+            self = .format
+        } else if container.contains(.cleanup) {
+            let nested = try container.nestedContainer(keyedBy: CleanupKeys.self, forKey: .cleanup)
+            let days = try nested.decode(Int.self, forKey: .retentionDays)
+            self = .cleanup(retentionDays: days)
+        } else if container.contains(.notify) {
+            let nested = try container.nestedContainer(keyedBy: NotifyKeys.self, forKey: .notify)
+            let header = try nested.decode(String.self, forKey: .header)
+            let message = try nested.decode(String.self, forKey: .message)
+            let recipients = try nested.decode([NotificationRecipient].self, forKey: .recipients)
+            let sendPerDrive = try nested.decodeIfPresent(Bool.self, forKey: .sendPerDrive) ?? true
+            self = .notify(header: header, message: message, recipients: recipients, sendPerDrive: sendPerDrive)
+        } else {
+            throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, debugDescription: "Unknown StepAction case"))
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case .record(let stop):
+            var nested = container.nestedContainer(keyedBy: RecordKeys.self, forKey: .record)
+            try nested.encode(stop, forKey: .stopAfterMinutes)
+        case .sync:
+            _ = container.nestedContainer(keyedBy: DummyKeys.self, forKey: .sync)
+        case .convert(let preset, let deleteOriginal):
+            var nested = container.nestedContainer(keyedBy: ConvertKeys.self, forKey: .convert)
+            try nested.encode(preset, forKey: .preset)
+            try nested.encode(deleteOriginal, forKey: .deleteOriginal)
+        case .rename(let pattern):
+            var nested = container.nestedContainer(keyedBy: RenameKeys.self, forKey: .rename)
+            try nested.encode(pattern, forKey: .pattern)
+        case .format:
+            _ = container.nestedContainer(keyedBy: DummyKeys.self, forKey: .format)
+        case .cleanup(let days):
+            var nested = container.nestedContainer(keyedBy: CleanupKeys.self, forKey: .cleanup)
+            try nested.encode(days, forKey: .retentionDays)
+        case .notify(let header, let message, let recipients, let sendPerDrive):
+            var nested = container.nestedContainer(keyedBy: NotifyKeys.self, forKey: .notify)
+            try nested.encode(header, forKey: .header)
+            try nested.encode(message, forKey: .message)
+            try nested.encode(recipients, forKey: .recipients)
+            try nested.encode(sendPerDrive, forKey: .sendPerDrive)
         }
     }
 }
