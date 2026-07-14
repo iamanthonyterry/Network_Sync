@@ -88,14 +88,20 @@ final class HyperDeckService: ObservableObject {
     /// leaves the deck waiting for a confirmation that never comes, so the
     /// button looked like it did nothing.
     func formatDrive(filesystem: String = "HFS+") async {
-        let readyResponse = await sendAndReceive(command: "format filesystem: \(filesystem)\n")
+        isBusy = true
+        defer { isBusy = false }
+
+        // Both handshake steps run through the raw (non-isBusy-toggling)
+        // path so the button/spinner stay steady for the whole operation
+        // instead of flickering off between the two commands.
+        let readyResponse = await performWithRetry(command: "format filesystem: \(filesystem)\n", readResponse: true) ?? ""
         guard let token = formatToken(from: readyResponse) else {
             if lastError == nil {
                 lastError = "Format failed — deck didn't return a confirmation token"
             }
             return
         }
-        _ = await sendAndReceive(command: "format confirm: \(token)\n")
+        _ = await performWithRetry(command: "format confirm: \(token)\n", readResponse: true)
     }
 
     /// Pulls the `format token: <value>` line out of the deck's
@@ -121,8 +127,12 @@ final class HyperDeckService: ObservableObject {
         }
     }
 
+    /// Polled every 2 seconds in the background, so this deliberately does
+    /// NOT toggle `isBusy` — doing so previously made the Record/Format
+    /// buttons and their spinner flicker on and off every poll cycle even
+    /// when nobody had pressed anything.
     func fetchTransport() async {
-        let response = await sendAndReceive(command: "transport info\n")
+        let response = await performWithRetry(command: "transport info\n", readResponse: true) ?? ""
         isConnected = !response.isEmpty
         transport = parseTransport(from: response)
     }
@@ -130,9 +140,10 @@ final class HyperDeckService: ObservableObject {
     /// Checks whether a disk/SSD is actually installed in the deck, using
     /// the "slot info" command. Returns nil if the check itself couldn't be
     /// completed (e.g. connection dropped) — that's different from "no media",
-    /// so callers shouldn't treat nil the same as `false`.
+    /// so callers shouldn't treat nil the same as `false`. Status check only,
+    /// so it doesn't toggle `isBusy` either.
     func checkMediaPresent() async -> Bool? {
-        let response = await sendAndReceive(command: "slot info\n")
+        let response = await performWithRetry(command: "slot info\n", readResponse: true) ?? ""
         guard !response.isEmpty else { return nil }
         return !response.lowercased().contains("status: empty")
     }
@@ -147,33 +158,22 @@ final class HyperDeckService: ObservableObject {
 
     /// Sends a command, retrying a couple of times if a single attempt
     /// times out or the connection drops, before finally reporting failure.
+    /// Toggles `isBusy` for the duration — use this for user-initiated
+    /// actions (record/stop), not for background status polling.
     private func send(command: String) async {
         isBusy = true
         defer { isBusy = false }
-
-        for attempt in 1...Self.maxAttempts {
-            lastError = nil
-            if await attemptSendAndReceive(command: command, readResponse: false) != nil {
-                isConnected = true
-                return
-            }
-            if attempt < Self.maxAttempts {
-                try? await Task.sleep(for: Self.retryDelay)
-            }
-        }
-        isConnected = false
+        _ = await performWithRetry(command: command, readResponse: false)
     }
 
-    /// Sends a command and reads the response, retrying a couple of times
-    /// if a single attempt times out or the connection drops. Returns ""
-    /// only once every attempt has failed.
-    private func sendAndReceive(command: String) async -> String {
-        isBusy = true
-        defer { isBusy = false }
-
+    /// Runs a command with retry logic, without touching `isBusy`. Shared by
+    /// the `isBusy`-toggling wrappers above and by callers (background
+    /// polling, multi-step handshakes like format) that manage busy/loading
+    /// state themselves so it doesn't flicker between steps.
+    private func performWithRetry(command: String, readResponse: Bool) async -> String? {
         for attempt in 1...Self.maxAttempts {
             lastError = nil
-            if let response = await attemptSendAndReceive(command: command, readResponse: true) {
+            if let response = await attemptSendAndReceive(command: command, readResponse: readResponse) {
                 isConnected = true
                 return response
             }
@@ -182,7 +182,7 @@ final class HyperDeckService: ObservableObject {
             }
         }
         isConnected = false
-        return ""
+        return nil
     }
 
     /// A single connect → send → (optionally) read attempt. Returns nil on
