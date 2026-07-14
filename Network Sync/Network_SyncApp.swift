@@ -6,7 +6,7 @@ struct Network_SyncApp: App {
     @StateObject private var scheduler = SchedulerService.shared
 
     var body: some Scene {
-        WindowGroup {
+        Window("Network Sync", id: "main") {
             ContentView()
                 .environmentObject(appState)
                 .onAppear {
