@@ -458,7 +458,9 @@ final class WorkflowEngine: ObservableObject {
         if failed.isEmpty {
             appState.log("  ✅ Notification sent")
         } else {
-            appState.log("  ⚠️ Failed to email: \(failed.joined(separator: ", "))")
+            for failure in failed {
+                appState.log("  ⚠️ Failed to email \(failure.recipient): \(failure.reason)")
+            }
             appState.currentRunErrors += 1
         }
     }

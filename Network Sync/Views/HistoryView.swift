@@ -86,7 +86,11 @@ struct RunRow: View {
                 statChip("\(run.processed) processed", color: .green)
                 if run.errors > 0 { statChip("\(run.errors) errors", color: .red) }
             }
-            Text(run.startedAt, style: .date) + Text(" · ") + Text(run.startedAt, style: .time)
+            HStack(spacing: 4) {
+                Text(run.startedAt, style: .date)
+                Text("·")
+                Text(run.startedAt, style: .time)
+            }
         }
         .font(.caption).foregroundStyle(.secondary)
         .padding(.vertical, 4)

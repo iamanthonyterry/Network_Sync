@@ -103,6 +103,17 @@ final class GmailAuthService {
             let (data, _) = try await URLSession.shared.data(for: request)
             let response = try JSONDecoder().decode(TokenResponse.self, from: data)
 
+            // Google's consent screen lets the user uncheck individual
+            // permissions ("granular consent"). If they left "Send email on
+            // your behalf" unchecked, sign-in still succeeds but the token
+            // won't carry gmail.send — every send will then fail with a 403.
+            // Catch that here instead of failing silently later.
+            if let grantedScope = response.scope, !grantedScope.contains("gmail.send") {
+                isConnecting = false
+                lastError = "Sign-in succeeded, but \"Send email on your behalf\" wasn't granted. Reconnect and make sure that permission is checked."
+                return
+            }
+
             KeychainStore.set(response.access_token, key: "accessToken")
             let expiry = Date().addingTimeInterval(TimeInterval(response.expires_in))
             KeychainStore.set(String(expiry.timeIntervalSince1970), key: "accessTokenExpiry")
@@ -188,6 +199,9 @@ private struct TokenResponse: Decodable {
     let access_token: String
     let expires_in: Int
     let refresh_token: String?
+    /// Space-separated list of scopes Google actually granted. Present when
+    /// it differs from what was requested — e.g. via granular consent.
+    let scope: String?
 }
 
 private struct UserInfoResponse: Decodable {
