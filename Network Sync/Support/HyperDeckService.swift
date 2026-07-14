@@ -94,14 +94,14 @@ final class HyperDeckService: ObservableObject {
         // Both handshake steps run through the raw (non-isBusy-toggling)
         // path so the button/spinner stay steady for the whole operation
         // instead of flickering off between the two commands.
-        let readyResponse = await performWithRetry(command: "format filesystem: \(filesystem)\n", readResponse: true) ?? ""
+        let readyResponse = await performWithRetry(command: "format: prepare: \(filesystem)\n", readResponse: true) ?? ""
         guard let token = formatToken(from: readyResponse) else {
             if lastError == nil {
                 lastError = "Format failed — deck didn't return a confirmation token"
             }
             return
         }
-        _ = await performWithRetry(command: "format confirm: \(token)\n", readResponse: true)
+        _ = await performWithRetry(command: "format: confirm: \(token)\n", readResponse: true)
     }
 
     /// Pulls the `format token: <value>` line out of the deck's

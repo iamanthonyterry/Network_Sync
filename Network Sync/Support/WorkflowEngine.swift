@@ -109,7 +109,7 @@ final class WorkflowEngine: ObservableObject {
 
         if !workflowWideNotifySteps.isEmpty && appState.isRunning {
             var workflowContext = StepContext(
-                deck: decks.first ?? HyperDeck(name: "Workflow", ipAddress: ""),
+                deck: decks.first ?? HyperDeck(name: "Workflow", ipAddress: "", remotePath: ""),
                 destDir: URL(fileURLWithPath: "/dev/null"),
                 files: allProcessedFiles,
                 workflowName: workflow.name
