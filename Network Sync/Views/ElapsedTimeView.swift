@@ -1,66 +1,67 @@
 import SwiftUI
-import Combine
 
 /// Displays a live elapsed-time progress bar and label for an active pipeline run.
-/// Uses a repeating timer that ticks every second while the run is active.
+/// Driven by `TimelineView` so it ticks on its own internal schedule —
+/// independent of how often the parent view happens to re-render (which,
+/// during an active sync, can be many times a second from progress callbacks).
 /// Pass `compact: true` for the slim menu-bar variant.
 struct ElapsedTimeView: View {
     let startTime: Date
     var compact: Bool = false
 
-    @State private var elapsed: TimeInterval = 0
-    private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
-
-    // Animate an indeterminate-style shimmer over 60 s cycles
-    private var progressValue: Double {
-        // Oscillate 0→1 every 60 s so the bar always appears "moving"
-        let cycle: Double = 60
-        return (elapsed.truncatingRemainder(dividingBy: cycle)) / cycle
-    }
-
     var body: some View {
-        if compact {
-            compactLayout
-        } else {
-            fullLayout
+        TimelineView(.periodic(from: startTime, by: 1)) { context in
+            let elapsed = context.date.timeIntervalSince(startTime)
+            if compact {
+                compactLayout(elapsed: elapsed)
+            } else {
+                fullLayout(elapsed: elapsed)
+            }
         }
     }
 
     // MARK: - Full (dashboard)
-    private var fullLayout: some View {
+    private func fullLayout(elapsed: TimeInterval) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Label("Running", systemImage: "clock")
                     .font(.caption).bold()
                     .foregroundStyle(.blue)
                 Spacer()
-                Text(elapsedString)
+                Text(elapsedString(elapsed))
                     .font(.system(.caption, design: .monospaced))
                     .foregroundStyle(.secondary)
             }
-            ProgressView(value: progressValue)
+            ProgressView(value: progressValue(elapsed))
                 .tint(.blue)
-                .animation(.linear(duration: 1), value: progressValue)
+                .animation(.linear(duration: 1), value: elapsed)
         }
-        .onReceive(timer) { _ in elapsed = Date().timeIntervalSince(startTime) }
     }
 
     // MARK: - Compact (menu bar)
-    private var compactLayout: some View {
+    private func compactLayout(elapsed: TimeInterval) -> some View {
         HStack(spacing: 8) {
-            ProgressView(value: progressValue)
+            ProgressView(value: progressValue(elapsed))
                 .tint(.blue)
                 .frame(width: 80)
-                .animation(.linear(duration: 1), value: progressValue)
-            Text(elapsedString)
+                .animation(.linear(duration: 1), value: elapsed)
+            Text(elapsedString(elapsed))
                 .font(.system(.caption2, design: .monospaced))
                 .foregroundStyle(.secondary)
         }
-        .onReceive(timer) { _ in elapsed = Date().timeIntervalSince(startTime) }
     }
 
     // MARK: - Helpers
-    private var elapsedString: String {
+
+    // Animate an indeterminate-style shimmer over 60 s cycles so the bar
+    // always appears "moving" even though there's no real percent-complete
+    // for an open-ended run.
+    private func progressValue(_ elapsed: TimeInterval) -> Double {
+        let cycle: Double = 60
+        return elapsed.truncatingRemainder(dividingBy: cycle) / cycle
+    }
+
+    private func elapsedString(_ elapsed: TimeInterval) -> String {
         let h = Int(elapsed) / 3600
         let m = Int(elapsed) % 3600 / 60
         let s = Int(elapsed) % 60
