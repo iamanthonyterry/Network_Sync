@@ -45,6 +45,13 @@ final class RemoteControlEngine: ObservableObject {
     // MARK: - Matching
 
     private func handle(osc message: OSCMessage) {
+        // The built-in "/hyperdeck/{name}/slot/{n}/format/{fs}" scheme is
+        // always active — it doesn't go through the mapping list at all,
+        // so it works for every configured device/slot with zero setup.
+        if let formatCommand = HyperDeckOSCAddress.parseFormatCommand(message.address) {
+            executeHyperDeckFormat(formatCommand)
+        }
+
         let matches = appState.remoteMappings.filter { mapping in
             guard mapping.isEnabled, case .osc(let address) = mapping.trigger else { return false }
             return address == message.address
@@ -64,14 +71,28 @@ final class RemoteControlEngine: ObservableObject {
     // MARK: - Execution
 
     private func execute(_ mapping: RemoteMapping) {
-        guard let deck = appState.hyperDecks.first(where: { $0.id == mapping.deckID }) else {
+        switch (mapping.target, mapping.action) {
+        case (.hyperDeck(let deckID), .hyperDeck(let action)):
+            executeHyperDeck(deckID: deckID, action: action, mapping: mapping)
+        case (.switcher(let switcherID), .switcher(let action)):
+            executeSwitcher(switcherID: switcherID, action: action, mapping: mapping)
+        default:
+            // Target/action kind mismatch — shouldn't happen since the
+            // editor UI always pairs them, but guard against stale/corrupt
+            // persisted data rather than silently doing nothing.
+            appState.log("⚠️ Remote control \"\(mapping.name)\" has a mismatched device/action pairing")
+        }
+    }
+
+    private func executeHyperDeck(deckID: UUID, action: HyperDeckRemoteAction, mapping: RemoteMapping) {
+        guard let deck = appState.hyperDecks.first(where: { $0.id == deckID }) else {
             appState.log("⚠️ Remote control \"\(mapping.name)\" targets a device that no longer exists")
             return
         }
-        appState.log("🎛 Remote control: \"\(mapping.name)\" → \(mapping.action.title) on \(deck.name)")
+        appState.log("🎛 Remote control: \"\(mapping.name)\" → \(action.title) on \(deck.name)")
 
         Task {
-            switch mapping.action {
+            switch action {
             case .record:
                 await HyperDeckService(host: deck.ipAddress).record()
             case .stop:
@@ -82,6 +103,43 @@ final class RemoteControlEngine: ObservableObject {
                 } catch {
                     appState.log("❌ Remote control format failed: \(error.localizedDescription)")
                 }
+            }
+        }
+    }
+
+    /// Handles the built-in `/hyperdeck/{name}/slot/{n}/format/{fs}` scheme
+    /// (see HyperDeckOSCAddress) — resolves the device by name rather than
+    /// by a pre-selected mapping, so it works for any configured HyperDeck
+    /// and any of its slots without the user setting anything up first.
+    private func executeHyperDeckFormat(_ command: HyperDeckOSCFormatCommand) {
+        guard let deck = appState.hyperDecks.first(where: { HyperDeckOSCAddress.namesMatch($0.name, command.deviceName) }) else {
+            appState.log("⚠️ OSC format command referenced unknown device \"\(command.deviceName)\"")
+            return
+        }
+        appState.log("🎛 OSC: format slot \(command.slot) (\(command.filesystem)) on \(deck.name)")
+
+        Task {
+            do {
+                try await HyperDeckService.formatDrive(deck: deck, slot: command.slot, filesystem: command.filesystem)
+            } catch {
+                appState.log("❌ OSC format failed on \(deck.name) slot \(command.slot): \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private func executeSwitcher(switcherID: UUID, action: SwitcherRemoteAction, mapping: RemoteMapping) {
+        guard let switcher = appState.switchers.first(where: { $0.id == switcherID }) else {
+            appState.log("⚠️ Remote control \"\(mapping.name)\" targets a device that no longer exists")
+            return
+        }
+        appState.log("🎛 Remote control: \"\(mapping.name)\" → \(action.title) on \(switcher.name)")
+
+        Task {
+            do {
+                let command: ATEMControlService.Command = action == .cut ? .cut : .auto
+                try await ATEMControlService.send(command, to: switcher.ipAddress)
+            } catch {
+                appState.log("❌ Remote control \(action.title) failed: \(error.localizedDescription)")
             }
         }
     }

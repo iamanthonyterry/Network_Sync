@@ -15,6 +15,7 @@ struct SettingsView: View {
                 storageSection
                 formatDriveSection
                 emailSection
+                RemoteControlSettingsView()
                 //systemSection
                 Spacer(minLength: 24)
             }

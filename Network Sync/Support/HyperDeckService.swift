@@ -94,6 +94,27 @@ final class HyperDeckService: ObservableObject {
         // Both handshake steps run through the raw (non-isBusy-toggling)
         // path so the button/spinner stay steady for the whole operation
         // instead of flickering off between the two commands.
+        await runFormatHandshake(filesystem: filesystem)
+    }
+
+    /// Formats a specific slot rather than whatever's currently active. The
+    /// deck's `format` command always targets the active slot, so this
+    /// switches to the requested one first (via `slot select`) and only
+    /// proceeds with the format handshake if that switch is confirmed —
+    /// this is what lets an OSC command name a slot (1, 2, 3, …) directly,
+    /// e.g. for decks with multiple SSD bays.
+    func formatDrive(slot: Int, filesystem: String = "HFS+") async {
+        isBusy = true
+        defer { isBusy = false }
+
+        guard await selectSlot(slot) else { return } // lastError already set
+        await runFormatHandshake(filesystem: filesystem)
+    }
+
+    /// The `format: prepare:` / `format: confirm:` handshake shared by both
+    /// entry points above. See the doc comment on `formatDrive(filesystem:)`
+    /// for why this can't be a single command.
+    private func runFormatHandshake(filesystem: String) async {
         let readyResponse = await performWithRetry(command: "format: prepare: \(filesystem)\n", readResponse: true) ?? ""
         guard let token = formatToken(from: readyResponse) else {
             if lastError == nil {
@@ -102,6 +123,22 @@ final class HyperDeckService: ObservableObject {
             return
         }
         _ = await performWithRetry(command: "format: confirm: \(token)\n", readResponse: true)
+    }
+
+    /// Switches the deck's active slot via `slot select: slot id: {n}`.
+    /// Returns false (with `lastError` set) if the deck didn't acknowledge
+    /// the switch — e.g. the slot doesn't exist on this model, or is empty.
+    private func selectSlot(_ slot: Int) async -> Bool {
+        let response = await performWithRetry(command: "slot select: slot id: \(slot)\n", readResponse: true) ?? ""
+        guard response.hasPrefix("200") else {
+            if lastError == nil {
+                lastError = response.isEmpty
+                    ? "Couldn't reach the device to switch to slot \(slot)"
+                    : "Couldn't switch to slot \(slot): \(response.trimmingCharacters(in: .whitespacesAndNewlines))"
+            }
+            return false
+        }
+        return true
     }
 
     /// Pulls the `format token: <value>` line out of the deck's
@@ -117,10 +154,20 @@ final class HyperDeckService: ObservableObject {
         return nil
     }
 
-    /// Convenience: create a one-shot connection, format, and discard.
+    /// Convenience: create a one-shot connection, format the active slot, and discard.
     static func formatDrive(deck: HyperDeck, filesystem: String = "HFS+") async throws {
         let service = HyperDeckService(host: deck.ipAddress)
         await service.formatDrive(filesystem: filesystem)
+        if let error = service.lastError {
+            throw NSError(domain: "HyperDeckService", code: 1,
+                          userInfo: [NSLocalizedDescriptionKey: error])
+        }
+    }
+
+    /// Convenience: create a one-shot connection, format a specific slot, and discard.
+    static func formatDrive(deck: HyperDeck, slot: Int, filesystem: String = "HFS+") async throws {
+        let service = HyperDeckService(host: deck.ipAddress)
+        await service.formatDrive(slot: slot, filesystem: filesystem)
         if let error = service.lastError {
             throw NSError(domain: "HyperDeckService", code: 1,
                           userInfo: [NSLocalizedDescriptionKey: error])

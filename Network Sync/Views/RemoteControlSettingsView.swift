@@ -71,6 +71,10 @@ private extension RemoteControlSettingsView {
                         .padding(.top, 4)
                     }
                 }
+
+                Text("Built in: **/hyperdeck/{name}/slot/{n}/format/{fs}** always formats that slot on the matching device by name — e.g. /hyperdeck/ISO_1/slot/3/format/HFS+. No mapping needed below.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
     }
@@ -162,11 +166,11 @@ private extension RemoteControlSettingsView {
                 } label: {
                     Label("Add Mapping", systemImage: "plus")
                 }
-                .disabled(appState.hyperDecks.isEmpty)
+                .disabled(appState.hyperDecks.isEmpty && appState.switchers.isEmpty)
             }
 
-            if appState.hyperDecks.isEmpty {
-                Text("Add a HyperDeck first to create a remote-control mapping.")
+            if appState.hyperDecks.isEmpty && appState.switchers.isEmpty {
+                Text("Add a HyperDeck or ATEM switcher first to create a remote-control mapping.")
                     .font(.caption).foregroundStyle(.secondary)
             } else if appState.remoteMappings.isEmpty {
                 Text("No mappings yet — add one to let an OSC or MIDI trigger control a device.")
@@ -180,7 +184,13 @@ private extension RemoteControlSettingsView {
     }
 
     func mappingRow(_ mapping: RemoteMapping) -> some View {
-        let deckName = appState.hyperDecks.first { $0.id == mapping.deckID }?.name ?? "Unknown Device"
+        let deviceName: String
+        switch mapping.target {
+        case .hyperDeck(let id):
+            deviceName = appState.hyperDecks.first { $0.id == id }?.name ?? "Unknown Device"
+        case .switcher(let id):
+            deviceName = appState.switchers.first { $0.id == id }?.name ?? "Unknown Device"
+        }
 
         return HStack {
             Toggle("", isOn: Binding(
@@ -195,7 +205,7 @@ private extension RemoteControlSettingsView {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(mapping.name)
-                Text("\(mapping.trigger.displayText)  →  \(mapping.action.title) on \(deckName)")
+                Text("\(mapping.trigger.displayText)  →  \(mapping.action.title) on \(deviceName)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
