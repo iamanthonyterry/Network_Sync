@@ -34,6 +34,12 @@ class AppState: ObservableObject {
     @Published var formatDriveAfterSync: Bool = false {
         didSet { UserDefaults.standard.set(formatDriveAfterSync, forKey: "formatDriveAfterSync") }
     }
+    @Published var remoteControlSettings: RemoteControlSettings = RemoteControlSettings() {
+        didSet { save(remoteControlSettings, key: "remoteControlSettings") }
+    }
+    @Published var remoteMappings: [RemoteMapping] = [] {
+        didSet { save(remoteMappings, key: "remoteMappings") }
+    }
 
     // MARK: - Live Pipeline State
     @Published var isRunning = false
@@ -67,6 +73,8 @@ class AppState: ObservableObject {
         workflowRunHistory         = load([WorkflowRun].self,               key: "workflowRunHistory")         ?? []
         emailNotificationSettings  = load(EmailNotificationSettings.self,   key: "emailNotificationSettings")  ?? EmailNotificationSettings()
         formatDriveAfterSync       = UserDefaults.standard.bool(forKey: "formatDriveAfterSync")
+        remoteControlSettings     = load(RemoteControlSettings.self, key: "remoteControlSettings") ?? RemoteControlSettings()
+        remoteMappings            = load([RemoteMapping].self,      key: "remoteMappings")         ?? []
     }
 
     // MARK: - HyperDeck CRUD
@@ -135,6 +143,21 @@ class AppState: ObservableObject {
     func moveWorkflow(from: IndexSet, to: Int) {
         workflows.move(fromOffsets: from, toOffset: to)
         for i in workflows.indices { workflows[i].sortOrder = i }
+    }
+
+    // MARK: - Remote Mapping CRUD
+    func addRemoteMapping(_ mapping: RemoteMapping) {
+        var m = mapping; m.sortOrder = remoteMappings.count
+        remoteMappings.append(m)
+    }
+    func updateRemoteMapping(_ mapping: RemoteMapping) {
+        guard let i = remoteMappings.firstIndex(where: { $0.id == mapping.id }) else { return }
+        remoteMappings[i] = mapping
+    }
+    func deleteRemoteMapping(id: UUID) { remoteMappings.removeAll { $0.id == id } }
+    func moveRemoteMapping(from: IndexSet, to: Int) {
+        remoteMappings.move(fromOffsets: from, toOffset: to)
+        for i in remoteMappings.indices { remoteMappings[i].sortOrder = i }
     }
 
     // MARK: - Run lifecycle
