@@ -115,7 +115,11 @@ final class HyperDeckService: ObservableObject {
     /// entry points above. See the doc comment on `formatDrive(filesystem:)`
     /// for why this can't be a single command.
     private func runFormatHandshake(filesystem: String) async {
-        let readyResponse = await performWithRetry(command: "format: prepare: \(filesystem)\n", readResponse: true) ?? ""
+        let readyResponse = await performWithRetry(
+            command: "format: prepare: \(filesystem)\n",
+            readResponse: true,
+            multilineResponse: true
+        ) ?? ""
         guard let token = formatToken(from: readyResponse) else {
             if lastError == nil {
                 lastError = "Format failed — deck didn't return a confirmation token"
@@ -217,10 +221,10 @@ final class HyperDeckService: ObservableObject {
     /// the `isBusy`-toggling wrappers above and by callers (background
     /// polling, multi-step handshakes like format) that manage busy/loading
     /// state themselves so it doesn't flicker between steps.
-    private func performWithRetry(command: String, readResponse: Bool) async -> String? {
+    private func performWithRetry(command: String, readResponse: Bool, multilineResponse: Bool = false) async -> String? {
         for attempt in 1...Self.maxAttempts {
             lastError = nil
-            if let response = await attemptSendAndReceive(command: command, readResponse: readResponse) {
+            if let response = await attemptSendAndReceive(command: command, readResponse: readResponse, multilineResponse: multilineResponse) {
                 isConnected = true
                 return response
             }
@@ -236,7 +240,7 @@ final class HyperDeckService: ObservableObject {
     /// any failure (connection error or timeout) so the caller can decide
     /// whether to retry; returns the response text (empty string if
     /// `readResponse` is false) on success.
-    private func attemptSendAndReceive(command: String, readResponse: Bool) async -> String? {
+    private func attemptSendAndReceive(command: String, readResponse: Bool, multilineResponse: Bool = false) async -> String? {
         guard let portObj = NWEndpoint.Port(rawValue: port) else { return nil }
         let connection = NWConnection(
             host: NWEndpoint.Host(host),
@@ -250,6 +254,36 @@ final class HyperDeckService: ObservableObject {
                 guard !resumed else { return }
                 resumed = true
                 continuation.resume(returning: value)
+            }
+
+            // Accumulates bytes across possibly-multiple `receive` calls. A
+            // single TCP read can return before the deck has finished writing
+            // a multi-line response (e.g. "216 format ready" followed by a
+            // separate "format token: …" line) — reading only that first
+            // partial chunk is what made the format handshake look like the
+            // deck never sent a token. Buffer is only touched from within
+            // NWConnection's receive callbacks, which never run concurrently
+            // with each other, so this is safe despite not being Sendable.
+            nonisolated(unsafe) var buffer = Data()
+
+            func receiveMore() {
+                connection.receive(minimumIncompleteLength: 1, maximumLength: 4096) { data, _, isComplete, error in
+                    if let data { buffer.append(data) }
+                    let text = String(data: buffer, encoding: .utf8) ?? ""
+
+                    // Multi-line responses are terminated by a blank line once
+                    // every parameter line has arrived; single-line acks never
+                    // get one, so only wait for it when we know to expect it.
+                    let hasBlankLineTerminator = text.contains("\r\n\r\n") || text.contains("\n\n")
+                    let done = !multilineResponse || hasBlankLineTerminator || isComplete || error != nil
+
+                    if done {
+                        connection.cancel()
+                        resumeOnce(text)
+                    } else {
+                        receiveMore()
+                    }
+                }
             }
 
             connection.stateUpdateHandler = { [weak self] state in
@@ -269,12 +303,7 @@ final class HyperDeckService: ObservableObject {
                             resumeOnce("")
                             return
                         }
-                        // Read response (up to 4 KB)
-                        connection.receive(minimumIncompleteLength: 1, maximumLength: 4096) { data, _, _, _ in
-                            connection.cancel()
-                            let response = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
-                            resumeOnce(response)
-                        }
+                        receiveMore()
                     })
                 case .failed(let error):
                     connection.cancel()

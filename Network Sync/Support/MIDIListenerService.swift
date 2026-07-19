@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 import CoreMIDI
 
 // MARK: - MIDI Source Info
@@ -140,7 +141,7 @@ final class MIDIListenerService: ObservableObject {
                 let packet = packetPtr.pointee
                 let bytes = withUnsafeBytes(of: packet.data) { Array($0.prefix(Int(packet.length))) }
                 messages.append(contentsOf: MIDICodec.decode(bytes))
-                packetPtr = MIDIPacketNext(packetPtr)
+                packetPtr = UnsafePointer(MIDIPacketNext(packetPtr))
             }
         }
         return messages

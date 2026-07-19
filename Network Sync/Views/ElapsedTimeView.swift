@@ -39,12 +39,21 @@ struct ElapsedTimeView: View {
     }
 
     // MARK: - Compact (menu bar)
+    //
+    // NOTE: This is hosted inside a `.menuBarExtraStyle(.menu)` scene, which
+    // is bridged to a real NSMenu. NSMenu's tracking loop cannot safely host
+    // continuously-animating SwiftUI content — an implicit `.animation()`
+    // here causes the menu's item-update pass to re-enter itself on every
+    // frame with no base case, overflowing the stack (EXC_BAD_ACCESS /
+    // "Could not determine thread index for stack guard region"). Keep this
+    // variant animation-free; only `fullLayout` (rendered in a normal
+    // window) may animate.
     private func compactLayout(elapsed: TimeInterval) -> some View {
         HStack(spacing: 8) {
             ProgressView(value: progressValue(elapsed))
                 .tint(.blue)
                 .frame(width: 80)
-                .animation(.linear(duration: 1), value: elapsed)
+                .transaction { $0.animation = nil }
             Text(elapsedString(elapsed))
                 .font(.system(.caption2, design: .monospaced))
                 .foregroundStyle(.secondary)

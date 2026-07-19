@@ -68,6 +68,63 @@ struct ConversionService {
         return success
     }
 
+    // MARK: - Trim / Export Clip
+
+    /// Exports a sub-range of `input` to `output`, preserving the original
+    /// codec (no re-encode) so trimming is fast and lossless. Used by the
+    /// video preview's in/out point export feature.
+    /// - Parameters:
+    ///   - input: Source video URL (local file — already downloaded for HyperDeck clips)
+    ///   - output: Destination URL for the trimmed clip
+    ///   - timeRange: The in/out range to keep
+    ///   - progress: Called on main actor with 0.0–1.0 as the export proceeds
+    /// - Returns: `true` on success
+    static func exportClip(
+        input: URL,
+        output: URL,
+        timeRange: CMTimeRange,
+        progress: @escaping @Sendable (Double) -> Void
+    ) async -> Bool {
+        try? FileManager.default.createDirectory(
+            at: output.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try? FileManager.default.removeItem(at: output)
+
+        let asset = AVURLAsset(url: input)
+        guard (try? await asset.load(.isReadable)) == true else { return false }
+
+        guard let session = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetPassthrough) else {
+            return false
+        }
+        session.timeRange = timeRange
+
+        let outputType: AVFileType = output.pathExtension.lowercased() == "mp4" ? .mp4 : .mov
+
+        let progressTask = Task {
+            while !Task.isCancelled {
+                let pct = Double(session.progress)
+                await MainActor.run { progress(pct) }
+                if pct >= 1.0 { break }
+                try? await Task.sleep(for: .milliseconds(200))
+            }
+        }
+
+        let success: Bool
+        do {
+            try await session.export(to: output, as: outputType)
+            success = true
+        } catch {
+            success = false
+        }
+        progressTask.cancel()
+
+        if success {
+            await MainActor.run { progress(1.0) }
+        }
+        return success
+    }
+
     // MARK: - Supported Input Check
 
     /// Returns true if AVFoundation can read this file type.

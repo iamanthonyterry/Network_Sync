@@ -106,6 +106,21 @@ struct FileNode: Identifiable {
         default:                           return .secondary
         }
     }
+
+    var isVideo: Bool {
+        guard !isDirectory else { return false }
+        let ext = (ftpPath ?? url?.lastPathComponent ?? name)
+            .components(separatedBy: ".").last?.lowercased() ?? ""
+        return ["mp4", "mov", "mxf", "m2ts"].contains(ext)
+    }
+}
+
+// Identifiable wrapper so the video player can be driven by .sheet(item:) —
+// it needs both the file and which device it came from (local vs. FTP).
+struct PlaybackTarget: Identifiable {
+    let node: FileNode
+    let device: DeviceSource
+    var id: String { node.id }
 }
 
 
@@ -121,6 +136,7 @@ struct StorageBrowserView: View {
     @State private var selectedFile: FileNode?
     @State private var searchText = ""
     @State private var sortOrder: SortOrder = .name
+    @State private var playbackTarget: PlaybackTarget?
 
     @State private var storageInfo: [String: StorageInfo] = [:]
     @State private var storageLoading: Set<String> = []
@@ -143,6 +159,9 @@ struct StorageBrowserView: View {
         }
         .task(id: allDevices.map(\.id)) {
             await loadAllStorageInfo()
+        }
+        .sheet(item: $playbackTarget) { target in
+            VideoPlayerSheet(node: target.node, device: target.device)
         }
     }
 
@@ -326,7 +345,15 @@ struct StorageBrowserView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     ForEach(filteredNodes) { node in
-                        FileNodeView(node: node, depth: 0, selectedFile: $selectedFile, onToggle: toggleNode)
+                        FileNodeView(
+                            node: node, depth: 0, selectedFile: $selectedFile,
+                            onToggle: toggleNode,
+                            onPlay: { selected in
+                                if let device = selectedDevice {
+                                    playbackTarget = PlaybackTarget(node: selected, device: device)
+                                }
+                            }
+                        )
                     }
                 }
                 .padding(.vertical, 4)
@@ -562,6 +589,7 @@ struct FileNodeView: View {
     let depth: Int
     @Binding var selectedFile: FileNode?
     let onToggle: (String) -> Void
+    let onPlay: (FileNode) -> Void
 
     private var isSelected: Bool { selectedFile?.id == node.id }
 
@@ -594,6 +622,18 @@ struct FileNodeView: View {
 
                 Spacer()
 
+                // Play button (video files only)
+                if node.isVideo {
+                    Button {
+                        onPlay(node)
+                    } label: {
+                        Image(systemName: "play.circle.fill")
+                    }
+                    .buttonStyle(.borderless)
+                    .foregroundStyle(.purple)
+                    .help("Play")
+                }
+
                 // Size (files only)
                 if !node.sizeFormatted.isEmpty {
                     Text(node.sizeFormatted)
@@ -610,6 +650,7 @@ struct FileNodeView: View {
                     onToggle(node.id)
                 } else {
                     selectedFile = node
+                    if node.isVideo { onPlay(node) }
                 }
             }
 
@@ -619,7 +660,10 @@ struct FileNodeView: View {
         // Children
         if node.isExpanded, let children = node.children {
             ForEach(children) { child in
-                FileNodeView(node: child, depth: depth + 1, selectedFile: $selectedFile, onToggle: onToggle)
+                FileNodeView(
+                    node: child, depth: depth + 1, selectedFile: $selectedFile,
+                    onToggle: onToggle, onPlay: onPlay
+                )
             }
         }
     }
