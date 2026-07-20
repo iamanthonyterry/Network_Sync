@@ -266,7 +266,7 @@ final class HyperDeckService: ObservableObject {
             // with each other, so this is safe despite not being Sendable.
             nonisolated(unsafe) var buffer = Data()
 
-            func receiveMore() {
+            @Sendable func receiveMore() {
                 connection.receive(minimumIncompleteLength: 1, maximumLength: 4096) { data, _, isComplete, error in
                     if let data { buffer.append(data) }
                     let text = String(data: buffer, encoding: .utf8) ?? ""
