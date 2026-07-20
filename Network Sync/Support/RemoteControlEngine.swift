@@ -51,6 +51,8 @@ final class RemoteControlEngine: ObservableObject {
         // so it works for every configured device/slot with zero setup.
         if let formatCommand = HyperDeckOSCAddress.parseFormatCommand(message.address) {
             executeHyperDeckFormat(formatCommand)
+        } else if let command = RemoteOSCCommand.parse(message.address) {
+            executeBuiltIn(command)
         }
 
         let matches = appState.remoteMappings.filter { mapping in
@@ -91,19 +93,23 @@ final class RemoteControlEngine: ObservableObject {
             return
         }
         appState.log("🎛 Remote control: \"\(mapping.name)\" → \(action.title) on \(deck.name)")
+        Task { await runHyperDeckAction(action, on: deck, source: "Remote control \"\(mapping.name)\"") }
+    }
 
-        Task {
-            switch action {
-            case .record:
-                await HyperDeckService(host: deck.ipAddress).record()
-            case .stop:
-                await HyperDeckService(host: deck.ipAddress).stop()
-            case .format:
-                do {
-                    try await HyperDeckService.formatDrive(deck: deck)
-                } catch {
-                    appState.log("❌ Remote control format failed: \(error.localizedDescription)")
-                }
+    /// Shared by both the mapping-based path above and the built-in
+    /// zero-setup OSC namespace below, so the actual device commands live
+    /// in exactly one place.
+    private func runHyperDeckAction(_ action: HyperDeckRemoteAction, on deck: HyperDeck, source: String) async {
+        switch action {
+        case .record:
+            await HyperDeckService(host: deck.ipAddress).record()
+        case .stop:
+            await HyperDeckService(host: deck.ipAddress).stop()
+        case .format:
+            do {
+                try await HyperDeckService.formatDrive(deck: deck)
+            } catch {
+                appState.log("❌ \(source) format failed on \(deck.name): \(error.localizedDescription)")
             }
         }
     }
@@ -134,14 +140,42 @@ final class RemoteControlEngine: ObservableObject {
             return
         }
         appState.log("🎛 Remote control: \"\(mapping.name)\" → \(action.title) on \(switcher.name)")
+        Task { await runSwitcherAction(action, on: switcher, source: "Remote control \"\(mapping.name)\"") }
+    }
 
-        Task {
-            do {
-                let command: ATEMControlService.Command = action == .cut ? .cut : .auto
-                try await ATEMControlService.send(command, to: switcher.ipAddress)
-            } catch {
-                appState.log("❌ Remote control \(action.title) failed: \(error.localizedDescription)")
+    /// Shared by both the mapping-based path above and the built-in
+    /// zero-setup OSC namespace below, so the actual device command lives
+    /// in exactly one place.
+    private func runSwitcherAction(_ action: SwitcherRemoteAction, on switcher: BlackmagicSwitcher, source: String) async {
+        do {
+            let command: ATEMControlService.Command = action == .cut ? .cut : .auto
+            try await ATEMControlService.send(command, to: switcher.ipAddress)
+        } catch {
+            appState.log("❌ \(source) \(action.title) failed on \(switcher.name): \(error.localizedDescription)")
+        }
+    }
+
+    /// Handles the built-in `/hyperdeck/{name}/{action}` and
+    /// `/switcher/{name}/{action}` scheme (see RemoteOSCCommand) — resolves
+    /// the device by name rather than a pre-selected mapping, so every
+    /// configured device and action is addressable with zero setup.
+    private func executeBuiltIn(_ command: RemoteOSCCommand) {
+        switch command {
+        case .hyperDeck(let deviceName, let action):
+            guard let deck = appState.hyperDecks.first(where: { HyperDeckOSCAddress.namesMatch($0.name, deviceName) }) else {
+                appState.log("⚠️ OSC command referenced unknown HyperDeck \"\(deviceName)\"")
+                return
             }
+            appState.log("🎛 OSC: \(action.title) on \(deck.name)")
+            Task { await runHyperDeckAction(action, on: deck, source: "OSC") }
+
+        case .switcher(let deviceName, let action):
+            guard let switcher = appState.switchers.first(where: { HyperDeckOSCAddress.namesMatch($0.name, deviceName) }) else {
+                appState.log("⚠️ OSC command referenced unknown switcher \"\(deviceName)\"")
+                return
+            }
+            appState.log("🎛 OSC: \(action.title) on \(switcher.name)")
+            Task { await runSwitcherAction(action, on: switcher, source: "OSC") }
         }
     }
 }
